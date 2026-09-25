@@ -111,26 +111,26 @@ stopifnot(
 anyNA(counts_matrix)
 any(counts_matrix < 0)
 
-# Verificación de que sean números ## VERIFICACI´ON DE QUE DATOS SEAN NUM´ERICOS
-is.numeric(counts_matrix[,1])
 
-# Verificar cuántas muestras hay en cada condición
+
+
+## Verificar datos y condiciones
+
+is.numeric(counts_matrix)
 table(groups$condition)
-
-# Verificar que los gene_ID sean rows ## FILAS O ESPA˜NOL O INGLES, NO ES CODIGO PERSONAL DEBE TENER FORMATO
 head(rownames(counts_matrix))
 
 
-# Cambio de objetos a factor
+## Definir condiciones experimentales
 groups$condition <- factor(groups$condition)
-class(groups$condition)
-levels(groups$condition)
+class(groups$condition) ## es interno en el codigo original lo podriamos quitar, opcional
+levels(groups$condition) ## same
 
-# Diseño de matriz de comparación de grupos
+## Construir MATRIZ DE DISE˜NO no diseño de matriz
 design <- model.matrix(~0 + condition, data = groups)
 colnames(design) <- levels(groups$condition)
-design
-colnames(design)
+
+
 
 # Creación de las comparaciones a evaluar en edgeR
 contrast <-limma::makeContrasts(
@@ -146,27 +146,17 @@ contrast <-limma::makeContrasts(
   levels = colnames(design)
   )
 
-# Evaluación de la creación de las comparaciones
-View(contrast)
-colnames(contrast)
-
 
 # Creación del objeto DGEList
 dge <- DGEList(
   counts = counts_matrix,
   group = groups$condition
 )
-dge
 
 
-# Eliminación de genes con baja expresión
+## Filtrar genes de baja expresión
 keep <- filterByExpr(dge, design)
-summary(keep)
-nrow(dge)
-
 dge <- dge[keep, , keep.lib.sizes = FALSE]
-nrow(dge)
-dim(dge)
 
 
 # Normalización con TMM
@@ -183,155 +173,79 @@ plotBCV(dge)
 
 # Ajustar el modelo estadístico
 ajuste <- glmQLFit(dge, design)
-View(ajuste)
-ajuste
-
 
 # Verificación
 dim(dge)
 dge$samples$norm.factors
 
 
-# Ejecución de comparaciones
-qlf_etoh6 <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "etoh_6_vs_control_6"])
-qlf_etoh24 <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "etoh_24_vs_control_24"])
-qlf_lipof6 <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "lipof_6_vs_vehicle_6"])
-qlf_lipof24 <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "lipof_24_vs_vehicle_24"])
-qlf_vehicle6 <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "vehicle_6_vs_control_6"])
-qlf_vehicle24 <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "vehicle_24_vs_control_24"])
-qlf_etoh <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "etoh_6_vs_etoh_24"])
-qlf_lipof <- glmQLFTest(ajuste, 
-                        contrast = contrast[, "lipof_6_vs_lipof_24"])
+# Ejecución de comparaciones ## VALE LA PENA HACER UN LOOP NO ES BUENA PRACTICA EJECUTAR EL MISMO CODIGO MIL VECES
+## Ejecutar los contrastes
+qlf_results <- lapply(
+  colnames(contrast),
+  function(x) {
+    glmQLFTest(
+      ajuste,
+      contrast = contrast[, x]
+    )
+  }
+)
+
+names(qlf_results) <- colnames(contrast)
 
 # Obtención de los resultados de las comparaciones
-result_etoh6 <- topTags(qlf_etoh6, n = Inf)$table
-result_etoh24 <- topTags(qlf_etoh24, n = Inf)$table
-result_lipof6 <- topTags(qlf_lipof6, n = Inf)$table
-result_lipof24 <- topTags(qlf_lipof24, n = Inf)$table
-result_vehicle6 <- topTags(qlf_vehicle6, n = Inf)$table
-result_vehicle24 <- topTags(qlf_vehicle24, n = Inf)$table
-result_etoh <- topTags(qlf_etoh, n = Inf)$table
-result_lipof <- topTags(qlf_lipof, n = Inf)$table
+## Obtener tablas de resultados
+results <- lapply(
+  qlf_results,
+  function(x) topTags(x, n = Inf)$table
+)
 
-# Anotación génica en base a la matriz de expresión
+## Añadir anotación génica
+annotation <- matrix_exp[, c("gene_id", "gene_name", "gene_biotype")]
 
 ## HACER UN LOOP! SE VE MEJOR, LIMITA ERRORES Y LO VUELVE REPRODUCIBLE
-# etoh 6
+# EJEMPLO: YA TENIAN UN ERROR  NO COINCIDE ETOH24 CON ETOH6
+# EN  
+''# etoh 24
+  result_etoh24$gene_name <- matrix_exp$gene_name[
+  match(rownames(result_etoh6), matrix_exp$gene_id) ## OJO! ERROR AQUI NO COINCIDE ETOH24 CON ETOH6
+]
 result_etoh6$gene_name <- matrix_exp$gene_name[
   match(rownames(result_etoh6), matrix_exp$gene_id)
 ]
-result_etoh6$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_etoh6), matrix_exp$gene_id)
-]
+''
 
-# etoh 24
-result_etoh24$gene_name <- matrix_exp$gene_name[
-  match(rownames(result_etoh6), matrix_exp$gene_id) ## OJO! ERROR AQUI NO COINCIDE ETOH24 CON ETOH6
-]
-result_etoh24$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_etoh24), matrix_exp$gene_id)
-]
-
-# lipofilico 6
-result_lipof6$gene_name <- matrix_exp$gene_name[
-  match(rownames(result_lipof6), matrix_exp$gene_id)
-]
-result_lipof6$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_lipof6), matrix_exp$gene_id)
-]
-
-# lipofilico 24
-result_lipof24$gene_name <- matrix_exp$gene_name[
-  match(rownames(result_lipof24), matrix_exp$gene_id)
-]
-result_lipof24$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_lipof24), matrix_exp$gene_id)
-]
-
-# Vehicle 6
-result_vehicle6$gene_name <- matrix_exp$gene_name[
-  match(rownames(result_vehicle6), matrix_exp$gene_id)
-]
-result_vehicle6$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_vehicle6), matrix_exp$gene_id)
-]
-
-# Vehicle 24
-result_vehicle24$gene_name <- matrix_exp$gene_name[
-  match(rownames(result_vehicle24), matrix_exp$gene_id)
-]
-result_vehicle24$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_vehicle24), matrix_exp$gene_id)
-]
-
-# etoh
-result_etoh$gene_name <- matrix_exp$gene_name[
-  match(rownames(result_etoh), matrix_exp$gene_id)
-]
-result_etoh$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_etoh), matrix_exp$gene_id)
-]
-
-# lipofilic
-result_lipof$gene_name <- matrix_exp$gene_name[
-  match(rownames(result_lipof), matrix_exp$gene_id)
-]
-result_lipof$gene_biotype <- matrix_exp$gene_biotype[
-  match(rownames(result_lipof), matrix_exp$gene_id)
-]
+results <- lapply(
+  results,
+  function(result) {
+    result$gene_name <- annotation$gene_name[
+      match(rownames(result), annotation$gene_id)
+    ]
+    
+    result$gene_biotype <- annotation$gene_biotype[
+      match(rownames(result), annotation$gene_id)
+    ]
+    
+    result
+  }
+)
 
 # Selección de genes diferencialmente expresados
-DEG_etoh6 <- result_etoh6[
-  result_etoh6$FDR < 0.05 &
-    abs(result_etoh6$logFC) >= 1,
+## SAME, NO CORRER MUCHAS VECES EL MISMO CODIGO
+## Seleccionar genes diferencialmente expresados
+DEGs <- lapply(
+  results,
+  function(result) {
+    result[
+      result$FDR < 0.05 &
+      abs(result$logFC) >= 1,
     ]
-dim(DEG_etoh6) # 1451 X 7
+  }
+)
 
-DEG_etoh24 <- result_etoh24[
-  result_etoh24$FDR < 0.05 &
-    abs(result_etoh24$logFC) >= 1,
-]
-dim(DEG_etoh24) # 0 X 7
 
-DEG_lipof6 <- result_lipof6[
-  result_lipof6$FDR < 0.05 &
-    abs(result_lipof6$logFC) >= 1,
-]
-dim(DEG_lipof6) # 1032 X 7
+DEGs[["etoh_6_vs_control_6"]]
+DEGs[["lipof_24_vs_vehicle_24"]]
 
-DEG_lipof24 <- result_lipof24[
-  result_lipof24$FDR < 0.05 &
-    abs(result_lipof24$logFC) >= 1,
-]
-dim(DEG_lipof24) # 221 X 7
-
-DEG_vehicle6 <- result_vehicle6[
-  result_vehicle6$FDR < 0.05 &
-    abs(result_vehicle6$logFC) >= 1,
-]
-dim(DEG_vehicle6) # 3 X 5
-
-DEG_vehicle24 <- result_vehicle24[
-  result_vehicle24$FDR < 0.05 &
-    abs(result_vehicle24$logFC) >= 1,
-]
-dim(DEG_vehicle24) # 31 X 7
-
-DEG_etoh <- result_etoh[
-  result_etoh$FDR < 0.05 &
-    abs(result_etoh$logFC) >= 1,
-]
-dim(DEG_etoh) # 183 X 7
-
-DEG_lipof <- result_lipof[
-  result_lipof$FDR < 0.05 &
-    abs(result_lipof$logFC) >= 1,
-]
 dim(DEG_lipof) # 340 X 7
+
