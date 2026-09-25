@@ -1,9 +1,9 @@
 #' Carga de librerías
 ## ELIMINEN las verificacionees personales a medida que corren el codigo, no es parte del codigo en realidad (view, dim, length...)
 
-library(SummarizedExperiment)
-library(TCGAbiolinks)
-library(dplyr)
+library(SummarizedExperiment) #ESTA LIBRERIA LA USARON?
+library(TCGAbiolinks) # LA USARON?
+library(dplyr) # LA USARON??
 library(edgeR)
 library(limma)
 
@@ -26,13 +26,26 @@ dim(counts_matrix)
 head(counts_matrix)
 
 ## POR QUE LA DOBLE COMILLA? ESO TE LO VUELVE COMENTARIO Y NO SE PUEDE EJECTUAR
-" # <- ESTAS
+## CREO QUE NO ES NECESARIA LA CPM, BORRAR ESTA SECCION SI NO LA USARON
+## EN REALIDAD NO LA USARON ASI QUE BORRENLA Y LA CREAN EN LA SECCION QUE SEA UTIL PERO PARA 
+## DGE NO SE USO, SOLO GENERARA CONFUSION, CPM SE USA EN HIPATHIA COLOCARLA CUANDO SE USE
+# O BIEN DESPUES DE dge <- calcNormFactors(dge) Y COLOCAR UN COMENTARIO DE QUE SE VA A USAR LUEGO PARA HIPATHIA
+'
+"# <- ESTAS
 #' Creación de matriz de cpm
 cpm_matrix <- matrix_exp[, grepl("_cpm$", colnames(matrix_exp))]
 rownames(cpm_matrix) <- matrix_exp$gene_id
 View(cpm_matrix)
 dim(cpm_matrix)
 head(cpm_matrix)"  # <- ESTAS
+
+
+# CPM MATRIX DE HIPATHIA
+cpm_matrix <- cpm(
+  dge,
+  log = FALSE
+)
+'
 
 
 #' Verificación de que counts sea igual al orden de las filas
@@ -249,3 +262,10 @@ DEGs[["lipof_24_vs_vehicle_24"]]
 
 dim(DEG_lipof) # 340 X 7
 
+
+## NOTAS EXTRA
+## ESTA bien el approach con EDGER solol recordar y conocer bien el metodo que están usando, la razon y las diferencias.
+## El análisis se realiza con edgeR utilizando los conteos crudos,
+## normalización TMM y el modelo quasi-likelihood (glmQLFit).
+## limma se utiliza únicamente para definir los contrastes mediante
+## makeContrasts(); por tanto, no es necesario aplicar voom().
