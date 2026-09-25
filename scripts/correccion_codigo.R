@@ -1,4 +1,6 @@
 #' Carga de librerías
+## ELIMINEN las verificacionees personales a medida que corren el codigo, no es parte del codigo en realidad (view, dim, length...)
+
 library(SummarizedExperiment)
 library(TCGAbiolinks)
 library(dplyr)
@@ -50,59 +52,39 @@ ncol(counts_matrix)
 colnames(counts_matrix)
 
 
-## ASIGNAR CONDICIONES
-groups <- data.frame(
+## ASIGNAR CONDICIONES 
+## CUANDO NECESITAMOS VARIAS CONDICIONES O LISTAS SE VE MAL LISTAR TODO Y POCO REPRODUCIBLE, LO MEJOR
+## ES HACER UN LOOP. EN ESTE CASO VEO QUE LA MATRIZ NO TIENE LOS NOMBRES DE LAS CONDICIONES ENTONCES PODEMOS HACER 
+# MINI TABLA DE METADATA QUE SEA MAS AGRADABLE AL LECTOR
+sample_info <- data.frame(
   sample = colnames(counts_matrix),
   condition = c(
-    "vehicle_6",
-    "vehicle_6",
-    "vehicle_6",
-    "etoh_6",
-    "etoh_6",
-    "etoh_6",
-    "etoh_6",
-    "etoh_6",
-    "etoh_6",
+    rep("vehicle_6", 3),
+    rep("etoh_6", 6),
     "lipof_6",
     "control_6",
-    "lipof_6",
-    "lipof_6",
-    "lipof_6",
-    "lipof_6",
-    "control_24",
-    "control_24",
-    "control_24",
-    "control_24",
-    "control_24",
+    rep("lipof_6", 4),
+    rep("control_24", 5),
     "control_6",
     "control_24",
-    "vehicle_24",
-    "vehicle_24",
-    "vehicle_24",
-    "vehicle_24",
-    "vehicle_24",
-    "vehicle_24",
-    "etoh_24",
-    "etoh_24",
-    "etoh_24",
+    rep("vehicle_24", 6),
+    rep("etoh_24", 3),
     "control_6",
-    "etoh_24",
-    "etoh_24",
-    "etoh_24",
-    "lipof_24",
-    "lipof_24",
-    "lipof_24",
-    "lipof_24",
-    "lipof_24",
-    "lipof_24",
-    "control_6",
-    "control_6",
-    "control_6",
-    "vehicle_6",
-    "vehicle_6",
-    "vehicle_6"
+    rep("etoh_24", 3),
+    rep("lipof_24", 6),
+    rep("control_6", 3),
+    rep("vehicle_6", 3)
   )
 )
+
+#### DEL CODIGO ANTERIOR ES MEJOR AUN SI LOS METADATOS ESTAN EN OTRO SHEET Y LO SUBIMOS A GITHUB ASI PODEMOS HACER:
+sample_info <- read.csv("sample_metadata.csv")
+sample_info$condition <- with(
+  sample_info,
+  paste(treatment, time, sep = "_")
+)
+## PERO UDS DECIDEN COMO PREFIEREN. SI QUIEREN DEJAR SU LISTA AL FINAL FUNCIONA SOLO NO ES BUENA PRACTICA.
+
 
 ## CAMBIO: en lugar de escribir una segunda lista de condiciones,
 ## se comprueba directamente que exista una condición por muestra.
@@ -111,76 +93,22 @@ ncol(counts_matrix)
 
 stopifnot(nrow(groups) == ncol(counts_matrix))
 
+## hay muchísimo código que se puede eliminar
+
+
+
 # Confimación de número de muestras
-length(colnames(counts_matrix))
-length(c("Vehicle_6",
-         "Vehicle_6",
-         "Vehicle_6",
-         "etoh_6",
-         "etoh_6",
-         "etoh_6",
-         "etoh_6",
-         "etoh_6",
-         "etoh_6",
-         "lipof_6",
-         "control_6",
-         "lipof_6",
-         "lipof_6",
-         "lipof_6",
-         "lipof_6",
-         "control_24",
-         "control_24",
-         "control_24",
-         "control_24",
-         "control_24",
-         "control_6",
-         "control_24",
-         "vehicle_24",
-         "vehicle_24",
-         "vehicle_24",
-         "vehicle_24",
-         "vehicle_24",
-         "vehicle_24",
-         "etoh_24",
-         "etoh_24",
-         "etoh_24",
-         "control_6",
-         "etoh_24",
-         "etoh_24",
-         "etoh_24",
-         "lipof_24",
-         "lipof_24",
-         "lipof_24",
-         "lipof_24",
-         "lipof_24",
-         "lipof_24",
-         "control_6",
-         "control_6",
-         "control_6",
-         "vehicle_6",
-         "vehicle_6",
-         "vehicle_6"))
+## Verificar metadatos y matriz de conteos
 
-
-
-# Comprobación de nombres asignados correctamente
-data.frame(
-  counts_matrix = colnames(counts_matrix),
-  groups = groups$sample,
-  condition = groups$condition
-  ) ## GROUP ES IGUAL A SAMPLE? SAMPLE DEBERIA SER GROUP$SAMPLE NO?
-
-##' Comprobación de nombres asignados correctamente
-data.frame(
-  sample = groups$sample,
-  condition = groups$condition
+# CAMBIO: se reemplazaron varias comprobaciones redundantes por una
+# verificación directa de que el número y orden de las muestras coinciden.
+stopifnot(
+  nrow(groups) == ncol(counts_matrix),
+  groups$sample == colnames(counts_matrix)
 )
 
-all(groups$sample == colnames(counts_matrix))
-
-
-# Verificación de valores negativos ## FALTANTES (NAs) Y NEGATIVOS
-any(is.na(counts_matrix))
+# Verificar valores faltantes y negativos
+anyNA(counts_matrix)
 any(counts_matrix < 0)
 
 # Verificación de que sean números ## VERIFICACI´ON DE QUE DATOS SEAN NUM´ERICOS
