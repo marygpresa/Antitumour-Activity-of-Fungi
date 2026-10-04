@@ -1128,29 +1128,37 @@ gsea_go <- lapply(
       maxGSSize = 500,
       pvalueCutoff = 0.05,
       pAdjustMethod = "BH",
-      eps = 0,
-      nPermSimple = 10000,
+      eps = 0, # Estimar valores-p menores
+      nPermSimple = 10000, #Realizar más estimaciones
       verbose = FALSE
     )
   }
 )
 
-lapply(
-  gsea_go,
+# Análisis de los 8 contrastes
+plots_gsea <- lapply(
+  names(gsea_go),
   function(x) {
-    sum(x@result$p.adjust < 0.05)
+    dotplot(
+      gsea_go[[x]],
+      showCategory = 20
+    ) +
+      ggtitle(x)
   }
 )
 
-dotplot(
-  gsea_go[["etoh_6_vs_control_6"]],
-  showCategory = 20
-)
+names(plots_gsea) <- names(gsea_go)
+plots_gsea
 
-
-
-# Ejemplo
-gsea_go[["etoh_6_vs_control_6"]]
+# Visualización de plots
+plots_gsea[["etoh_6_vs_control_6"]]
+plots_gsea[["etoh_24_vs_control_24"]]
+plots_gsea[["lipof_6_vs_vehicle_6"]]
+plots_gsea[["lipof_24_vs_vehicle_24"]]
+plots_gsea[["vehicle_6_vs_control_6"]]
+plots_gsea[["vehicle_24_vs_control_24"]]
+plots_gsea[["etoh_6_vs_etoh_24"]]
+plots_gsea[["lipof_6_vs_lipof_24"]]
 
 
 # Tablas de resultados
@@ -1159,18 +1167,14 @@ gsea_go_df <- lapply(
   as.data.frame
 )
 
-# Visualización ejemplo
-head(
-  gsea_go_df[["etoh_6_vs_control_6"]]
-)
 
 
-# GSEA de KEGG
+# GSEA de KEGG--------------------
 gsea_kegg <- lapply(
   results,
   function(result) {
     
-    ranking <- make_entrez_ranking(result)
+    ranking <- make_entrez_ranking(result)#~1.3% genes con empate de ranking
     
     gseKEGG(
       geneList = ranking,
@@ -1179,17 +1183,49 @@ gsea_kegg <- lapply(
       maxGSSize = 500,
       pvalueCutoff = 0.05,
       pAdjustMethod = "BH",
-      verbose = FALSE
+      verbose = FALSE,
+      eps = 0,
+      nPermSimple = 10000
     )
   }
 )
-
 names(gsea_kegg) <- names(results)
 
+# Tabla de resultados
 gsea_kegg_df <- lapply(
   gsea_kegg,
   as.data.frame
 )
+
+# Gráficos
+plots_kegg <- lapply(
+  names(gsea_kegg),
+  function(x) {
+    dotplot(
+      gsea_kegg[[x]],
+      showCategory = 15
+    ) +
+      ggtitle(paste("KEGG:", x))
+  }
+)
+names(plots_kegg) <- names(gsea_kegg)
+
+# Visualización
+plots_kegg[["etoh_6_vs_control_6"]]
+plots_kegg[["etoh_24_vs_control_24"]]
+plots_kegg[["lipof_6_vs_vehicle_6"]]
+plots_kegg[["lipof_24_vs_vehicle_24"]]
+plots_kegg[["vehicle_6_vs_control_6"]]
+plots_kegg[["vehicle_24_vs_control_24"]]
+plots_kegg[["etoh_6_vs_etoh_24"]]
+plots_kegg[["lipof_6_vs_lipof_24"]]
+
+
+
+
+
+
+
 
 
 ##### Vale la pena agregar este análisis?
@@ -1207,82 +1243,42 @@ gsea_reactome <- lapply(
       maxGSSize = 500,
       pvalueCutoff = 0.05,
       pAdjustMethod = "BH",
+      eps = 0,
+      nPermSimple = 10000,
       verbose = FALSE
     )
   }
 )
-
 names(gsea_reactome) <- names(results)
 
+# Tabla de resultado
 gsea_reactome_df <- lapply(
   gsea_reactome,
   as.data.frame
 )
 
 # Gráficas
-dotplot(
-  gsea_go[["etoh_6_vs_control_6"]],
-  showCategory = 15,
-  title = "GO-BP: EtOH 6 h vs Control 6 h"
+plots_reactome <- lapply(
+  names(gsea_reactome),
+  function(x) {
+    dotplot(
+      gsea_reactome[[x]],
+      showCategory = 15
+    ) +
+      ggtitle(paste("Reactome:", x))
+  }
 )
-
-dotplot(
-  gsea_go[["etoh_24_vs_control_24"]],
-  showCategory = 15,
-  title = "GO-BP: EtOH 24 h vs Control 24 h"
-)
-
-dotplot(
-  gsea_go[["lipof_6_vs_control_6"]],
-  showCategory = 15,
-  title = "GO-BP: Lipof 6 h vs Control 6 h"
-)
-
-dotplot(
-  gsea_go[["lipof_24_vs_control_24"]],
-  showCategory = 15,
-  title = "GO-BP: Lipof 24 h vs Control 24 h"
-)
-
-dotplot(
-  gsea_go[["vehicle_6_vs_control_6"]],
-  showCategory = 15,
-  title = "GO-BP: Vehículo 6 h vs Control 6 h"
-)
-
-dotplot(
-  gsea_go[["vehicle_24_vs_control_24"]],
-  showCategory = 15,
-  title = "GO-BP: Vehículo 24 h vs Control 24 h"
-)
-
-dotplot(
-  gsea_go[["etoh_6_vs_etoh_24"]],
-  showCategory = 15,
-  title = "GO-BP: EtOH 6 h vs EtOH 24 h"
-)
-
-dotplot(
-  gsea_go[["lipof_6_vs_lipof_24"]],
-  showCategory = 15,
-  title = "GO-BP: Lipof 6 h vs Lipof 24 h"
-)
-
-# KEGG
-dotplot(
-  gsea_kegg[["etoh_6_vs_control_6"]],
-  showCategory = 15,
-  title = "KEGG: EtOH 6 h vs Control 6 h"
-)
-
-# Reactome      Sí?
-dotplot(
-  gsea_reactome[["etoh_6_vs_control_6"]],
-  showCategory = 15,
-  title = "Reactome: EtOH 6 h vs Control 6 h"
-)
+names(plots_reactome) <- names(gsea_reactome)
 
 
+plots_reactome[["etoh_6_vs_control_6"]]
+plots_reactome[["etoh_24_vs_control_24"]]
+plots_reactome[["lipof_6_vs_vehicle_6"]]
+plots_reactome[["lipof_24_vs_vehicle_24"]]
+plots_reactome[["vehicle_6_vs_control_6"]]
+plots_reactome[["vehicle_24_vs_control_24"]]
+plots_reactome[["etoh_6_vs_etoh_24"]]
+plots_reactome[["lipof_6_vs_lipof_24"]]
 
 
 
