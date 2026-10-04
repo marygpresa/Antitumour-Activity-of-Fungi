@@ -1,0 +1,1292 @@
+#' Carga de librerías
+library(edgeR)
+library(limma)
+library(ggplot2)
+library(pheatmap)
+library(readxl)
+library(EnhancedVolcano)
+
+
+# Carga de la matriz de expresión
+expr <- read.delim(
+  "7TK4C4-expression-matrix.tsv",
+  header = TRUE,
+  check.names = FALSE
+)
+
+#' Copia de la matriz
+matrix_exp <- expr
+
+#' Creación de matriz de conteos
+counts_matrix <- matrix_exp[, grepl("_count$", colnames(matrix_exp))]
+rownames(counts_matrix) <- matrix_exp$gene_id
+
+# Visualizar
+View(counts_matrix)
+dim(counts_matrix)
+head(counts_matrix)
+colnames(counts_matrix)
+
+#' Verificación de que counts sea igual al orden de las filas
+all(colnames(counts_matrix) == 
+      colnames(matrix_exp)[grepl("_count$", colnames(matrix_exp))])
+
+# Guradar matriz de conteos
+saveRDS(counts_matrix, "matriz_conteos.rds")
+
+
+#' Creación de matriz de cpm
+cpm_matrix <- matrix_exp[, grepl("_cpm$", colnames(matrix_exp))]
+rownames(cpm_matrix) <- matrix_exp$gene_id
+View(cpm_matrix)
+dim(cpm_matrix)
+head(cpm_matrix)
+
+
+# Metadatos de muestras
+sample_excel <- read_excel(
+  "tube_codes_plasmidsaurus.xlsx",
+  col_names = "excel_name"
+)
+
+sample_excel$sample_id <- seq_len(nrow(sample_excel))
+
+# Extraer el número real de cada muestra desde los nombres de las columnas
+sample_id <- as.numeric(
+  sub("7TK4C4_([0-9]+)_count", "\\1", colnames(counts_matrix))
+)
+sample_id
+
+# Emparejar cada columna de la matriz con la fila correcta del Excel
+groups <- sample_excel[
+  match(sample_id, sample_excel$sample_id),
+]
+
+groups$original_sample <- colnames(counts_matrix)
+colnames(counts_matrix)
+all(groups$original_sample == colnames(counts_matrix))
+
+
+
+# 5. Separar tratamiento, tiempo y réplica --------------------------------------
+# Tratamiento
+groups$treatment <- ifelse(
+  grepl("^Control", groups$excel_name, ignore.case = TRUE), "control",
+  ifelse(
+    grepl("^Vehicle", groups$excel_name, ignore.case = TRUE), "vehicle",
+    ifelse(
+      grepl("^etoh", groups$excel_name, ignore.case = TRUE), "etoh",
+      ifelse(
+        grepl("^lipofilic", groups$excel_name, ignore.case = TRUE), "lipof",
+        NA
+      )
+    )
+  )
+)
+
+# Tiempo
+groups$time <- ifelse(
+  grepl("_6h_", groups$excel_name), "6",
+  ifelse(grepl("_24h_", groups$excel_name), "24", NA)
+)
+
+# Réplica
+groups$replicate <- as.numeric(
+  sub(".*_rep", "", groups$excel_name)
+)
+
+
+# Condiciones usadas en edgeR
+groups$condition <- paste(
+  groups$treatment,
+  groups$time,
+  sep = "_"
+)
+
+# Nombre en figuras
+display_treatment <- ifelse(
+  groups$treatment == "vehicle",
+  "vehiculo",
+  groups$treatment
+)
+
+groups$sample <- paste0(
+  display_treatment, "_",
+  groups$time, "h_rep",
+  groups$replicate
+)
+
+# Mantener el orden exacto de las columnas
+rownames(groups) <- groups$sample
+
+
+
+# Renombrar matrices ------------------------------------------------------
+colnames(counts_matrix) <- groups$sample
+
+# La matriz CPM tiene el mismo orden de muestras que counts_matrix
+stopifnot(
+  sub("_count$", "", groups$original_sample) ==
+    sub("_cpm$", "", colnames(cpm_matrix))
+)
+
+colnames(cpm_matrix) <- groups$sample
+
+
+
+# Comprobación ------------------------------------------------------------
+#' Comprobación de número de muestras
+stopifnot(
+  nrow(groups) == ncol(counts_matrix),
+  nrow(groups) == ncol(cpm_matrix),
+  !anyDuplicated(groups$sample),
+  !anyNA(groups$treatment),
+  !anyNA(groups$time),
+  !anyNA(groups$replicate)
+)
+
+anyNA(counts_matrix)
+any(counts_matrix < 0)
+table(groups$condition)
+
+# Confirmar específicamente que la muestra 21 no está
+"7TK4C4_21_count" %in% groups$original_sample
+
+
+# Guardar datos -----------------------------------------------------------
+write.csv(
+  groups,
+  "sample_info.csv",
+  row.names = FALSE
+)
+
+saveRDS(groups, "sample_info.rds")
+saveRDS(counts_matrix, "matriz_conteos.rds")
+
+
+
+# Diseño experimental -----------------------------------------------------
+# Condiciones experimentales
+groups$condition <- factor(groups$condition)
+
+# Diseño de matriz
+design <- model.matrix(~0 + condition, data = groups)
+colnames(design) <- levels(groups$condition)
+
+
+# Creación de las comparaciones a evaluar en edgeR
+contrast <-limma::makeContrasts(
+  etoh_6_vs_control_6 = etoh_6 - control_6,
+  etoh_24_vs_control_24 = etoh_24 - control_24,
+  lipof_6_vs_vehicle_6 = lipof_6 - vehicle_6,
+  lipof_24_vs_vehicle_24 = lipof_24 - vehicle_24,
+  vehicle_6_vs_control_6 = vehicle_6 - control_6,
+  vehicle_24_vs_control_24 = vehicle_24 - control_24,
+  etoh_6_vs_etoh_24 = etoh_6 - etoh_24,
+  lipof_6_vs_lipof_24 = lipof_6 - lipof_24,
+  
+  levels = colnames(design)
+  )
+
+# Evaluación de la creación de las comparaciones     ### Quitar S.M
+View(contrast)
+colnames(contrast)
+
+
+
+# Análisis con edgeR ------------------------------------------------------
+# Creación del objeto DGEList
+dge <- DGEList(
+  counts = counts_matrix,
+  group = groups$condition
+)
+dge
+dim(dge)
+
+
+# Filtrar genes de baja expresión
+keep <- filterByExpr(dge, design)
+summary(keep)       # Quitar A.F
+nrow(dge)           # Quitar A.F
+
+dge <- dge[keep, , keep.lib.sizes = FALSE]   # 16683 genes
+nrow(dge)       # Quitar A.F
+dim(dge)        # Quitar A.F
+
+
+# Normalización con TMM
+dge <- calcNormFactors(dge)
+dge$samples
+
+
+# Estimación de la dispersión
+dge <- estimateDisp(dge, design)
+dge$common.dispersion
+dge$tagwise.dispersion[1:10]
+plotBCV(dge)
+
+
+# Ajustar el modelo estadístico quasi-likelihood
+ajuste <- glmQLFit(dge, design)
+dim(ajuste)           # Quitar A.F
+
+
+# Verificación
+dim(ajuste)
+dim(dge)
+dge$samples$norm.factors
+
+
+
+# Ejecución de las comparaciones ------------------------------------------
+# Ejecutar los contrastes
+qlf_results <- lapply(
+  colnames(contrast),
+  function(x) {
+    glmQLFTest(
+    ajuste,
+    contrast = contrast[, x]
+    )
+  }
+)
+
+names(qlf_results) <- colnames(contrast)
+
+
+# Resultados --------------------------------------------------------------
+# Obtención de los resultados de las comparaciones
+results <- lapply(
+  qlf_results,
+  function(x) {
+    topTags(x, n = Inf)$table
+  }
+)
+
+
+# Anotación génica 
+annotation <- matrix_exp[, c(
+  "gene_id",
+  "gene_name",
+  "gene_biotype"
+)]
+
+results <- lapply(
+  results,
+  function(result) {
+    result$gene_name <- annotation$gene_name[
+      match(rownames(result), annotation$gene_id)
+    ]
+    
+    result$gene_biotype <- annotation$gene_biotype[
+      match(rownames(result), annotation$gene_id)
+    ]
+    
+    result
+  }
+)
+
+
+# Selección DEGs ----------------------------------------------------------
+# Seleccionar genes diferencialmente expresados
+DEGs <- lapply(
+  results,
+  function(result) {
+    result[
+      result$FDR < 0.05 &
+      abs(result$logFC) >= 1,
+    ]
+  }
+)
+
+# Verificación
+dim(DEGs[["etoh_6_vs_control_6"]]) # 1451 X 7
+dim(DEGs[["etoh_24_vs_control_24"]]) # 0 X 7
+dim(DEGs[["lipof_6_vs_vehicle_6"]]) # 1032 X 7
+dim(DEGs[["lipof_24_vs_vehicle_24"]]) # 221 X 7
+dim(DEGs[["vehicle_6_vs_control_6"]]) # 3 X 5 //// ahora da 3 X 7
+dim(DEGs[["vehicle_24_vs_control_24"]]) # 31 X 7
+dim(DEGs[["etoh_6_vs_etoh_24"]]) # 183 X 7
+dim(DEGs[["lipof_6_vs_lipof_24"]]) # 340 X 7
+
+# Número de DEGs por comparación
+deg_summary <- data.frame(     # Es lo mismo que arriba, pero lo dejo solo para
+  comparison = names(DEGs),    # comprobar con esto y lo de antes
+  n_DEGs = sapply(DEGs, nrow)
+)
+
+names(DEGs)
+deg_summary
+# Cambia respecto al de Plasmid
+
+
+
+# Guardar resultados ------------------------------------------------------
+dir.create(
+  "resultados_edgeR",
+  showWarnings = FALSE
+)
+
+for (comparison in names(results)) {
+  
+  write.csv(
+    results[[comparison]],
+    file.path(
+      "resultados_edgeR",
+      paste0(comparison, "_todos_los_genes.csv")
+    )
+  )
+  
+  write.csv(
+    DEGs[[comparison]],
+    file.path(
+      "resultados_edgeR",
+      paste0(comparison, "_DEGs.csv")
+    )
+  )
+}
+
+write.csv(
+  deg_summary,
+  file.path("resultados_edgeR", "resumen_DEGs.csv"),
+  row.names = FALSE
+)
+
+
+
+
+
+
+# Control de calidad de datos ---------------------------------------------
+#-----------------------------------------PCA-----------------------------------
+# Visualizar matriz de cpm
+summary(as.vector(as.matrix(cpm_matrix)))
+range(as.vector(as.matrix(cpm_matrix)))
+
+# Conversión de cpm_matrix a escala logarítmica
+logCPM <- log2(cpm_matrix + 1)
+View(logCPM)
+colnames(logCPM)
+
+# Filtrar matriz de CPM
+logCPM_matrix <- logCPM[keep, ]  # Esta matriz también se filtra quitando los
+View(logCPM_matrix)              # pocos conteos?
+dim(logCPM_matrix)
+colnames(logCPM_matrix)
+
+
+
+# PCA general----------------------------------------------
+pca <- prcomp(
+  t(logCPM_matrix), 
+  scale. = TRUE   # Acá debe ser TRUE o FALSE?
+  )
+View(pca)
+pca[["x"]]
+
+# Verificar orden de muestras en cpm
+all(rownames(pca$x) == groups$sample)
+
+'# Asignar condiciones de variables a cpm
+head(rownames(pca$x))
+head(groups$sample)
+
+groups_pca <- groups
+groups_pca$sample <- sub("_count$", "_cpm", groups_pca$sample)
+
+all(rownames(pca$x) == groups_pca$sample)'
+
+# Determinar la variación
+percent_var <- 100 * pca$sdev^2/sum(pca$sdev^2)
+
+# Graficar PCA
+condition_colors <- as.numeric(groups_pca$condition)
+plot(pca$x[,1], 
+     pca$x[,2],
+     xlab = paste0("PC1 (", round(percent_var[1], 1), "%)"),
+     ylab = paste0("PC2 (", round(percent_var[2], 1), "%)"),
+     main = "PCA general",
+     pch = 19,
+     col = condition_colors
+     )
+
+legend("topright",
+       legend = levels(groups$condition),
+       col = seq_along(levels(groups$condition)),
+       pch = 19
+       )
+
+
+
+
+# PCA condiciones aisladas------------------------------------------------------
+# Determinación de las condiciones
+get_samples <- function(treatments) {
+  groups$sample[
+    groups$treatment %in% treatments
+  ]
+}
+
+samples_etoh <- get_samples(
+  c("control", "etoh")
+)
+
+samples_lipof <- get_samples(
+  c("control", "vehicle", "lipof")
+)
+
+
+
+
+# Matriz de pca para cada condición
+logCPM_etoh <- logCPM[
+  ,
+  samples_etoh,
+  drop = FALSE
+]
+
+logCPM_lipof <- logCPM[
+  ,
+  samples_lipof,
+  drop = FALSE
+]
+
+
+# Cálculo de PCA
+pca_etoh <- prcomp(t(logCPM_etoh),
+                   scale. = FALSE # Estandarización de la escala
+                   )             # ¿Es necesario?
+
+pca_lipof <- prcomp(t(logCPM_lipof),
+                    scale. = FALSE # Estandarización de la escala
+                   )              # ¿Es necesario?
+
+
+# Datos para gráficos
+# 1-EtOH
+groups_etoh <- groups[
+  match(
+    rownames(pca_etoh$x),
+    groups$sample
+  ),
+]
+
+groups_lipof <- groups[
+  match(
+    rownames(pca_lipof$x),
+    groups$sample
+  ),
+]
+
+percent_var_etoh <- 100 *
+  pca_etoh$sdev^2 /
+  sum(pca_etoh$sdev^2)
+
+percent_var_lipof <- 100 *
+  pca_lipof$sdev^2 /
+  sum(pca_lipof$sdev^2)
+
+
+# Porcentaje de variación
+percent_var_etoh <- 100 * pca_etoh$sdev^2/sum(pca_etoh$sdev^2)
+percent_var_lipof <- 100 * pca_lipof$sdev^2/sum(pca_lipof$sdev^2)
+
+
+# Gráfico
+# 1- EtOH
+colors_etoh <- c(
+  "control_6" = "#2A0081",
+  "etoh_6" = "#B7E7FC",
+  "control_24" = "#CF3068",
+  "etoh_24" = "#E884C6"
+)
+plot(pca_etoh$x[,1], 
+     pca_etoh$x[,2],
+     xlab = paste0("PC1 (", round(percent_var_etoh[1], 1), "%)"),
+     ylab = paste0("PC2 (", round(percent_var_etoh[2], 1), "%)"),
+     main = "PCA EtOH",
+     pch = 19,
+     col = colors_etoh[as.character(grupos_etoh$condition)],
+     xlim = range(pca_etoh$x[,1]) * 1.1,
+     ylim = range(pca_etoh$x[,2]) * 1.1
+)
+
+legend("topright",
+       inset = c(0, 0),
+       legend = names(colors_etoh),
+       col = colors_etoh,
+       pch = 19,
+       xpd = TRUE,
+       bty = "n"
+)
+
+# 1- Lipof
+colors_lipof <- c(
+  "control_6" = "#2A0081",
+  "lipof_6" = "#B7E7FC",
+  "vehicle_6" = "#F58B0C",
+  "control_24" = "#CF3068",
+  "lipof_24" = "#E884C6",
+  "vehicle_24" = "#F5C700"
+)
+plot(pca_lipof$x[,1], pca_lipof$x[,2],
+     xlab = paste0("PC1 (", round(percent_var_lipof[1], 1), "%)"),
+     ylab = paste0("PC2 (", round(percent_var_lipof[2], 1), "%)"),
+     main = "PCA Lipofílico",
+     pch = 19,
+     col = colors_lipof[as.character(grupos_lipof$condition)],
+     xlim = range(pca_lipof$x[,1]) * 1.1,
+     ylim = range(pca_lipof$x[,2]) * 1.1
+)
+
+legend("topright",
+       inset = c(0, 0),
+       legend = names(colors_lipof),
+       col = colors_lipof,
+       pch = 19,
+       xpd = TRUE,
+       bty = "n"
+)
+
+
+
+# Control de calidad ---------------------------------------------------------------------------
+# Tamaño de las librerías: 
+barplot(
+  dge$samples$lib.size,
+  names.arg = colnames(dge),
+  las = 2,
+  cex.names = 0.6,
+  ylab = "Library size"
+)
+
+# Factores de normalización: 
+dge$samples$norm.factors
+
+
+
+# Distribución de expresión
+# General
+boxplot(
+  logCPM,  # Si es esta matrix y no logCPM_matrix?
+  las = 2,
+  outline = FALSE,
+  cex.axis = 0.6,
+  main = "Distribución de logCPM"
+)
+
+# Lipof
+boxplot(
+  logCPM_lipof,
+  las = 2,
+  outline = FALSE,
+  cex.axis = 0.6,
+  main = "Distribución de logCPM - Lipof"
+)
+
+# EtOH
+boxplot(
+  logCPM_etoh,     #Asignar el nombre a cada muestra
+  las = 2,
+  outline = FALSE,
+  cex.axis = 0.6,
+  main = "Distribución de logCPM - Lipof"
+)
+
+
+
+# MDS
+cols_mds <- as.numeric(groups$condition)
+
+plotMDS(
+  dge,
+  col = cols_mds,
+  pch = 16
+)
+
+legend(
+  "topright",
+  legend = levels(groups$condition),
+  col = seq_along(levels(groups$condition)),
+  pch = 16,
+  bty = "n"
+)
+
+
+
+# Gráfico Heatmaps de correlación
+plot_correlation_heatmap <- function(
+    expression_matrix,
+    title) {
+  
+  expresion_matrix <- as.matrix(expression_matrix)
+  
+  correlation_matrix <- cor(
+    expression_matrix
+  )
+  
+  annotation_samples <- as.data.frame(
+    groups[
+      match(
+        colnames(correlation_matrix),
+        groups$sample
+    ),
+    c("treatment", "time"),
+    drop = FALSE
+  ]
+  )
+  
+  rownames(annotation_samples) <-
+    colnames(correlation_matrix)
+  
+  pheatmap(
+    correlation_matrix,
+    annotation_col = annotation_samples,
+    annotation_row = annotation_samples,
+    main = title
+  )
+}
+
+# General
+plot_correlation_heatmap(
+  logCPM_matrix,
+  "Correlación entre muestras - General"
+)
+
+# EtOH
+plot_correlation_heatmap(
+  logCPM_etoh,
+  "Correlación entre muestras - EtOH"
+)
+
+# Lipof
+plot_correlation_heatmap(
+  logCPM_lipof,
+  "Correlación entre muestras - Lipof"
+)
+
+
+
+
+# MA plots por comparación  -----------------------------------------------
+# Lipof6
+plotMD(qlf_lipof6)
+abline(h = c(-1, 1), lty = 2)
+
+# Lipof24
+plotMD(qlf_lipof24)
+abline(h = c(-1, 1), lty = 2)
+
+# Etoh6
+plotMD(qlf_etoh6)
+abline(h = c(-1, 1), lty = 2)
+
+# Etoh24
+plotMD(qlf_etoh24)
+abline(h = c(-1, 1), lty = 2)
+
+
+# Volcano plots -----------------------------------------------------------
+# Etoh6
+EnhancedVolcano(
+  results[["etoh_6_vs_control_6"]],
+  lab = results[["etoh_6_vs_control_6"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "EtOH 6 h vs Control 6 h"
+)
+
+# Etoh24
+EnhancedVolcano(
+  results[["etoh_24_vs_control_24"]],
+  lab = results[["etoh_24_vs_control_24"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "EtOH 24 h vs Control 24 h"
+)
+
+# Lipof6
+EnhancedVolcano(
+  results[["lipof_6_vs_vehicle_6"]],
+  lab = results[["lipof_6_vs_vehicle_6"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "Lipofílico 6 h vs Vehículo 6 h"
+)
+
+# Lipof24
+EnhancedVolcano(
+  results[["lipof_24_vs_vehicle_24"]],
+  lab = results[["lipof_24_vs_vehicle_24"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "Lipofílico 24 h vs Vehículo 24 h"
+)
+
+
+# Vehicle 6
+EnhancedVolcano(
+  results[["vehicle_6_vs_control_6"]],
+  lab = results[["vehicle_6_vs_control_6"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "Vehículo 6 h vs Control 6 h"
+)
+
+# Vehicle 24
+EnhancedVolcano(
+  results[["vehicle_24_vs_control_24"]],
+  lab = results[["vehicle_24_vs_control_24"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "Vehículo 24 h vs Control 24 h"
+)
+
+# EtOH 6-24
+EnhancedVolcano(
+  results[["etoh_6_vs_etoh_24"]],
+  lab = results[["etoh_6_vs_etoh_24"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "EtOH 6 h vs EtOH 24 h"
+)
+
+# Lipof 6-24
+EnhancedVolcano(
+  results[["lipof_6_vs_lipof_24"]],
+  lab = results[["lipof_6_vs_lipof_24"]]$gene_name,
+  x = "logFC",
+  y = "FDR",
+  pCutoff = 0.05,
+  FCcutoff = 1,
+  title = "Lipofílico 6 h vs Lipofílico 24 h"
+)
+
+
+
+#--------------------------------------Heatmap----------------------------------
+# Heatmap automático de condiciones
+plot_deg_heatmap <- function(
+    comparison,
+    n_genes = 50) {
+  
+  result <- DEGs[[comparison]]
+  
+  if (nrow(result) == 0) {
+    message(
+      "No hay DEGs para ",
+      comparison,
+      " con FDR < 0.05 y |logFC| >= 1."
+    )
+    return(NULL)
+  }
+  
+  # Ordenar por FDR
+  result <- result[
+    order(result$FDR),
+  ]
+  
+  # Seleccionar hasta n_genes
+  top_genes <- head(
+    rownames(result),
+    n_genes
+  )
+  
+  # Identificar automáticamente las condiciones del contraste
+  contrast_conditions <- rownames(contrast)[
+    contrast[, comparison] != 0
+  ]
+  
+  selected_samples <- groups$sample[
+    groups$condition %in%
+      contrast_conditions
+  ]
+  
+  heatmap_matrix <- logCPM[
+    top_genes,
+    selected_samples,
+    drop = FALSE
+  ]
+  
+  # Convertir a matriz numérica
+  heatmap_matrix <- as.matrix(heatmap_matrix)
+  
+  # Z-score por gen para visualizar patrones relativos
+  heatmap_matrix <- t(
+    scale(
+      t(heatmap_matrix)
+    )
+  )
+  
+  # Eliminar genes con varianza cero, si los hubiera
+  heatmap_matrix <- heatmap_matrix[
+    apply(
+      heatmap_matrix,
+      1,
+      function(x) all(is.finite(x))
+    ),
+    ,
+    drop = FALSE
+  ]
+  
+  # Nombre de genes para las filas
+  gene_names <- annotation$gene_name[
+    match(
+      rownames(heatmap_matrix),
+      annotation$gene_id
+    )
+  ]
+  
+  gene_names[
+    is.na(gene_names) |
+      gene_names == ""
+  ] <- rownames(heatmap_matrix)[
+    is.na(gene_names) |
+      gene_names == ""
+  ]
+  
+  rownames(heatmap_matrix) <- make.unique(
+    gene_names
+  )
+  
+  annotation_heatmap <- as.data.frame(groups[
+    match(
+      colnames(heatmap_matrix),
+      groups$sample
+    ),
+    c("treatment", "time"),
+    drop = FALSE
+  ]
+  )
+  
+  rownames(annotation_heatmap) <-
+    colnames(heatmap_matrix)
+  
+  pheatmap(
+    heatmap_matrix,
+    annotation_col = annotation_heatmap,
+    show_colnames = TRUE,
+    fontsize_col = 7,
+    fontsize_row = 7,
+    main = paste0(
+      "Top ",
+      nrow(heatmap_matrix),
+      " DEGs - ",
+      comparison
+    )
+  )
+}
+
+
+# Ejemplos:
+plot_deg_heatmap(
+  "etoh_6_vs_control_6",
+  n_genes = 50
+)
+
+plot_deg_heatmap(
+  "lipof_6_vs_vehicle_6",
+  n_genes = 50
+)
+
+plot_deg_heatmap(
+  "lipof_24_vs_vehicle_24",
+  n_genes = 50
+)
+
+plot_deg_heatmap(
+  "vehicle_6_vs_control_6", 
+  n_genes = 50
+)
+
+plot_deg_heatmap(
+  "vehicle_24_vs_control_24", 
+  n_genes = 50
+)
+
+plot_deg_heatmap(
+  "etoh_6_vs_etoh_24", 
+  n_genes = 50
+)
+
+plot_deg_heatmap(
+  "lipof_6_vs_lipof_24", 
+  n_genes = 50
+)
+
+########### HEATMAP GENERAL
+# Seleccionar los 500 genes más variables
+gene_variance <- apply(
+  logCPM_matrix,
+  1,
+  var
+)
+
+top_500_genes <- names(
+  sort(
+    gene_variance,
+    decreasing = TRUE
+  )
+)[1:500]
+
+heatmap_general <- logCPM_matrix[
+  top_500_genes,
+  ,
+  drop = FALSE
+]
+
+# Z-score por gen
+heatmap_general <- t(
+  scale(
+    t(heatmap_general)
+  )
+)
+
+# Eliminar genes con valores no finitos
+heatmap_general <- heatmap_general[
+  apply(
+    heatmap_general,
+    1,
+    function(x) all(is.finite(x))
+  ),
+  ,
+  drop = FALSE
+]
+
+# Anotación de muestras
+annotation_general <- as.data.frame(
+  groups[
+    match(
+      colnames(heatmap_general),
+      groups$sample
+    ),
+    c("treatment", "time"),
+    drop = FALSE
+  ]
+)
+
+rownames(annotation_general) <-
+  colnames(heatmap_general)
+
+# Heatmap
+pheatmap(
+  heatmap_general,
+  annotation_col = annotation_general,
+  show_colnames = TRUE,
+  fontsize_col = 7,
+  fontsize_row = 5,
+  main = "Top 500 genes más variables"
+)
+
+
+
+
+
+# Análisis de enrriquecimiento funcional -----------------------------------
+# Librerías y paquetes
+BiocManager::install(c(
+  "ReactomePA",
+  "enrichplot"
+))
+
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ReactomePA)
+library(enrichplot)
+library(dplyr)
+
+# Conversión a Entrez
+head(annotation$gene_id)
+
+gene_conversion <- bitr(
+  rownames(dge),
+  fromType = "ENSEMBL",
+  toType = "ENTREZID",
+  OrgDb = org.Hs.eg.db
+)
+
+nrow(gene_conversion)
+head(gene_conversion)
+
+# Ambiente
+universe_entrez <- unique(gene_conversion$ENTREZID)
+
+
+
+# Estadístico F - logFC
+rank <- function(result) {
+  
+  ranking <- sign(result$logFC)*sqrt(result$F)#~1.3% genes con empate de ranking
+  
+  names(ranking) <- rownames(result)
+  
+  ranking <- ranking[
+    is.finite(ranking)
+  ]
+  
+  ranking <- sort(
+    ranking,
+    decreasing = TRUE
+  )
+  
+  return(ranking)
+}
+
+
+# Convertir ranking a ENTREZID
+library(BiocParallel)
+
+register(SerialParam())
+
+
+make_entrez_ranking <- function(result) {
+  
+  ranking <- rank(result)
+  
+  ranking_df <- data.frame(
+    gene_id = names(ranking),
+    score = as.numeric(ranking),
+    stringsAsFactors = FALSE
+  )
+  
+  ranking_df <- ranking_df %>%
+    inner_join(
+      gene_conversion,
+      by = c("gene_id" = "ENSEMBL")
+    )
+  
+  ranking_df <- ranking_df %>%
+    filter(!is.na(ENTREZID)) %>%
+    group_by(ENTREZID) %>%
+    slice_max(
+      order_by = abs(score),
+      n = 1,
+      with_ties = FALSE
+    ) %>%
+    ungroup()
+  
+  ranking <- ranking_df$score
+  names(ranking) <- ranking_df$ENTREZID
+  
+  ranking <- sort(
+    ranking,
+    decreasing = TRUE
+  )
+  
+  return(ranking)
+}
+
+ranking_test <- make_entrez_ranking(
+  results[["etoh_6_vs_control_6"]]
+)
+gsea_test <- gseGO(
+  geneList = ranking_test,
+  OrgDb = org.Hs.eg.db,
+  keyType = "ENTREZID",
+  ont = "BP",
+  minGSSize = 10,
+  maxGSSize = 500,
+  pvalueCutoff = 0.05,
+  pAdjustMethod = "BH",
+  verbose = TRUE
+)
+head(gsea_test@result)
+sum(gsea_test@result$p.adjust < 0.05)
+
+
+
+# GSEA - GO
+library(BiocParallel)
+
+register(SerialParam())
+
+gsea_go <- lapply(
+  results,
+  function(result) {
+    
+    ranking <- make_entrez_ranking(result)
+    
+    gseGO(
+      geneList = ranking,
+      OrgDb = org.Hs.eg.db,
+      keyType = "ENTREZID",
+      ont = "BP",
+      minGSSize = 10,
+      maxGSSize = 500,
+      pvalueCutoff = 0.05,
+      pAdjustMethod = "BH",
+      eps = 0,
+      nPermSimple = 10000,
+      verbose = FALSE
+    )
+  }
+)
+
+lapply(
+  gsea_go,
+  function(x) {
+    sum(x@result$p.adjust < 0.05)
+  }
+)
+
+dotplot(
+  gsea_go[["etoh_6_vs_control_6"]],
+  showCategory = 20
+)
+
+
+
+# Ejemplo
+gsea_go[["etoh_6_vs_control_6"]]
+
+
+# Tablas de resultados
+gsea_go_df <- lapply(
+  gsea_go,
+  as.data.frame
+)
+
+# Visualización ejemplo
+head(
+  gsea_go_df[["etoh_6_vs_control_6"]]
+)
+
+
+# GSEA de KEGG
+gsea_kegg <- lapply(
+  results,
+  function(result) {
+    
+    ranking <- make_entrez_ranking(result)
+    
+    gseKEGG(
+      geneList = ranking,
+      organism = "hsa",
+      minGSSize = 10,
+      maxGSSize = 500,
+      pvalueCutoff = 0.05,
+      pAdjustMethod = "BH",
+      verbose = FALSE
+    )
+  }
+)
+
+names(gsea_kegg) <- names(results)
+
+gsea_kegg_df <- lapply(
+  gsea_kegg,
+  as.data.frame
+)
+
+
+##### Vale la pena agregar este análisis?
+# Reactome
+gsea_reactome <- lapply(
+  results,
+  function(result) {
+    
+    ranking <- make_entrez_ranking(result)
+    
+    gsePathway(
+      geneList = ranking,
+      organism = "human",
+      minGSSize = 10,
+      maxGSSize = 500,
+      pvalueCutoff = 0.05,
+      pAdjustMethod = "BH",
+      verbose = FALSE
+    )
+  }
+)
+
+names(gsea_reactome) <- names(results)
+
+gsea_reactome_df <- lapply(
+  gsea_reactome,
+  as.data.frame
+)
+
+# Gráficas
+dotplot(
+  gsea_go[["etoh_6_vs_control_6"]],
+  showCategory = 15,
+  title = "GO-BP: EtOH 6 h vs Control 6 h"
+)
+
+dotplot(
+  gsea_go[["etoh_24_vs_control_24"]],
+  showCategory = 15,
+  title = "GO-BP: EtOH 24 h vs Control 24 h"
+)
+
+dotplot(
+  gsea_go[["lipof_6_vs_control_6"]],
+  showCategory = 15,
+  title = "GO-BP: Lipof 6 h vs Control 6 h"
+)
+
+dotplot(
+  gsea_go[["lipof_24_vs_control_24"]],
+  showCategory = 15,
+  title = "GO-BP: Lipof 24 h vs Control 24 h"
+)
+
+dotplot(
+  gsea_go[["vehicle_6_vs_control_6"]],
+  showCategory = 15,
+  title = "GO-BP: Vehículo 6 h vs Control 6 h"
+)
+
+dotplot(
+  gsea_go[["vehicle_24_vs_control_24"]],
+  showCategory = 15,
+  title = "GO-BP: Vehículo 24 h vs Control 24 h"
+)
+
+dotplot(
+  gsea_go[["etoh_6_vs_etoh_24"]],
+  showCategory = 15,
+  title = "GO-BP: EtOH 6 h vs EtOH 24 h"
+)
+
+dotplot(
+  gsea_go[["lipof_6_vs_lipof_24"]],
+  showCategory = 15,
+  title = "GO-BP: Lipof 6 h vs Lipof 24 h"
+)
+
+# KEGG
+dotplot(
+  gsea_kegg[["etoh_6_vs_control_6"]],
+  showCategory = 15,
+  title = "KEGG: EtOH 6 h vs Control 6 h"
+)
+
+# Reactome      Sí?
+dotplot(
+  gsea_reactome[["etoh_6_vs_control_6"]],
+  showCategory = 15,
+  title = "Reactome: EtOH 6 h vs Control 6 h"
+)
+
+
+
+
+
+
+
+
+
