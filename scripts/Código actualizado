@@ -1,3 +1,6 @@
+# Carga de los objetos del ambiente
+load("respaldo_analisis_completo.RData")
+
 #' Carga de librerías
 library(edgeR)
 library(limma)
@@ -1251,7 +1254,7 @@ rutas_kegg <- c(
   Autofagia = "hsa04140",
   Senalizacion_p53 = "hsa04115",
   Reparacion_NER = "hsa03430",
-  Reparacion_BER = "hsa03440",
+  Reparacion_BER = "hsa03440"
 )
 
 
@@ -1669,7 +1672,7 @@ gene_conversion <- bitr(
   fromType = "ENSEMBL",
   toType = "ENTREZID",
   OrgDb = org.Hs.eg.db
-)
+) # 15.01% of input gene IDs are fail to map
 
 nrow(gene_conversion)
 head(gene_conversion)
@@ -1745,31 +1748,6 @@ ranking_test <- make_entrez_ranking(
 )
 
 any(!is.finite(ranking_test))
-
-
-# Prueba estadística de enriquecimiento
-gsea_test <- gseGO(
-  geneList = ranking_test,
-  OrgDb = org.Hs.eg.db,
-  keyType = "ENTREZID",
-  ont = "BP",
-  minGSSize = 10,
-  maxGSSize = 500,
-  pvalueCutoff = 0.05,
-  pAdjustMethod = "BH",
-  eps = 0,
-  nPermSimple = 10000,
-  verbose = TRUE
-) 
-
-# Warnig de p-value=NA, pero se revisa y no se encuenrtra ninguno
-head(gsea_test@result)
-sum(gsea_test@result$p.adjust < 0.05)
-
-gsea_test@result[
-  is.na(gsea_test@result$pvalue),
-  c("ID", "Description", "setSize", "pvalue", "NES")
-]
 
 
 # GSEA - GO
@@ -2872,7 +2850,7 @@ plot_kegg_integrated <- function(
 
 
 # 5. Generar mapas de todas las rutas y comparaciones
-
+comparisons_gsea <- names(gsea_kegg_death)
 for (comparison in comparisons_gsea) {
   
   for (pathway_id in names(death_pathways)) {
@@ -2906,3 +2884,5 @@ for (comparison in comparisons_gsea) {
 # Si quiero ver las tablas que incluyen DEGs y Leading genes
 View(read.csv("Mapas_KEGG_GSEA/lipof_24_vs_vehicle_24/hsa04217_genes.csv"))
 
+# Guardar objetos del ambiente
+save.image("respaldo_analisis_completo.RData")
