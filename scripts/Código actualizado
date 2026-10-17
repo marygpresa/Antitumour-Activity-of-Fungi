@@ -1208,20 +1208,28 @@ plot_correlation_heatmap(
 
 
 # MA plots por comparación  -----------------------------------------------
-# Lipof6
-plotMD(qlf_lipof6)
+# Vehiculo 6
+plotMD(qlf_results$vehicle_6_vs_control_6)
+abline(h = c(-1, 1), lty = 2)
+
+# Vehiculo 24
+plotMD(qlf_results$vehicle_24_vs_control_24)
+abline(h = c(-1, 1), lty = 2)
+
+#Lipof 6
+plotMD(qlf_results$lipof_6_vs_vehicle_6)
 abline(h = c(-1, 1), lty = 2)
 
 # Lipof24
-plotMD(qlf_lipof24)
+plotMD(qlf_results$lipof_24_vs_vehicle_24)
 abline(h = c(-1, 1), lty = 2)
 
 # Etoh6
-plotMD(qlf_etoh6)
+plotMD(qlf_results$etoh_6_vs_control_6)
 abline(h = c(-1, 1), lty = 2)
 
 # Etoh24
-plotMD(qlf_etoh24)
+plotMD(qlf_results$etoh_24_vs_control_24)
 abline(h = c(-1, 1), lty = 2)
 
 
