@@ -181,6 +181,7 @@ matrix_exp <- matrix_exp[
 dim(matrix_exp)
 dim(groups)
 
+citation("limma")
 
 
 ################################################################################
@@ -267,7 +268,6 @@ groups[
 table(groups$treatment, groups$time)
 
 
-
 ###############################################################################
 # Control de calidad
 # Dimensiones de la matriz de conteos
@@ -295,10 +295,6 @@ groups_qc <- as.data.frame(
 )
 
 stopifnot(identical(groups_qc$sample, colnames(counts_matrix)))
-
-
-
-
 
 
 ################################################################################
@@ -329,7 +325,6 @@ contrast <-limma::makeContrasts(
 # Evaluación de la creación de las comparaciones     ### Quitar S.M
 View(contrast)
 colnames(contrast)
-
 
 
 ################################################################################
@@ -435,7 +430,6 @@ results <- lapply(
 )
 
 
-
 ################################################################################
 # Selección DEGs ----------------------------------------------------------
 # Seleccionar genes diferencialmente expresados
@@ -460,14 +454,22 @@ dim(DEGs[["etoh_6_vs_etoh_24"]]) # 183 X 7
 dim(DEGs[["lipof_6_vs_lipof_24"]]) # 340 X 7                    No igual                  341
 
 # Número de DEGs por comparación
-deg_summary <- data.frame(     # Es lo mismo que arriba, pero lo dejo solo para
-  comparison = names(DEGs),    # comprobar con esto y lo de antes
-  n_DEGs = sapply(DEGs, nrow)
-)
+deg_summary <- do.call(rbind, lapply(names(DEGs), function(comparacion) {
+  
+  tabla <- DEGs[[comparacion]]
+  
+  data.frame(
+    comparison = comparacion,
+    Total_DEGs = nrow(tabla),
+    UP = sum(tabla$logFC >= 1, na.rm = TRUE),
+    DOWN = sum(tabla$logFC <= -1, na.rm = TRUE)
+  )
+  
+}))
 
-names(DEGs)
+rownames(deg_summary) <- NULL
+
 deg_summary
-
 
 
 
@@ -503,23 +505,13 @@ write.csv(
 )
 
 
-
+################################################################################
 # Control de calidad de datos ---------------------------------------------
 #-----------------------------------------PCA-----------------------------------
 # Visualizar matriz de cpm
 summary(as.vector(as.matrix(cpm_matrix)))
 range(as.vector(as.matrix(cpm_matrix)))
 
-# Conversión de cpm_matrix a escala logarítmica
-#logCPM <- log2(cpm_matrix + 1)
-#View(logCPM)
-#colnames(logCPM)
-
-# Filtrar matriz de CPM
-#logCPM_matrix <- logCPM[keep, ]  # Esta matriz también se filtra quitando los
-#View(logCPM_matrix)              # pocos conteos?
-#dim(logCPM_matrix)
-#colnames(logCPM_matrix)
 
 # Expresión logCPM normalizada por TMM
 logCPM_matrix <- edgeR::cpm(
@@ -608,9 +600,23 @@ percent_var_lipof <- 100 * pca_lipof$sdev^2/sum(pca_lipof$sdev^2)
 
 # Gráfico
 # 1- EtOH
+
+# Fuente Times New Roman
+library(showtext)
+
+font_add(
+  family = "Times New Roman",
+  regular = "C:/Windows/Fonts/times.ttf",
+  bold = "C:/Windows/Fonts/timesbd.ttf"
+)
+showtext_auto()
+
 par(
   mar = c(5, 5, 5, 8),
-  xpd = NA
+  xpd = NA,
+  family = "Times New Roman",
+  font = 2,
+  cex = 1
 )
 
 colors_etoh <- c(
@@ -628,15 +634,23 @@ plot(pca_etoh$x[,1],
      cex = 2,
      col = colors_etoh[as.character(groups_etoh$condition)],
      xlim = range(pca_etoh$x[,1]) * 1.1,
-     ylim = range(pca_etoh$x[,2]) * 1.1
+     ylim = range(pca_etoh$x[,2]) * 1.1,
+     cex.axis = 2.7,
+     cex.lab = 2.7,
+     cex.main = 2.7,
+     font.axis = 2,
+     font.lab = 2,
+     font.main = 2
 )
 
 legend("topright",
-       inset = c(-0.13, 0),
+       inset = c(-0.19, 0),
        legend = names(colors_etoh),
        col = colors_etoh,
        pch = 19,
        pt.cex = 2,
+       text.font = 2,
+       cex = 2.7,
        xpd = TRUE,
        bty = "n"
 )
@@ -669,7 +683,7 @@ plot(pca_lipof$x[,1], pca_lipof$x[,2],
 )
 
 legend("topright",
-       inset = c(-0.15, 0),
+       inset = c(-0.18, 0),
        legend = names(colors_lipof),
        col = colors_lipof,
        pch = 19,
@@ -679,198 +693,8 @@ legend("topright",
 )
 
 
-
-#----------------------------------------Lipofílico-----------------------------
-################################################################################
-# PCA SOLO 24 h
-# Control 24 h + Vehicle 24 h + Lipof 24 h
-
-
-# Seleccionar muestras
-samples_lipof_24 <- groups$sample[
-  groups$condition %in% c(
-    "control_24",
-    "vehicle_24",
-    "lipof_24"
-  )
-]
-dim(groups)
-
-# Submatriz de expresión
-logCPM_lipof_24 <- logCPM_matrix[
-  ,
-  samples_lipof_24,
-  drop = FALSE
-]
-
-# PCA
-pca_lipof_24 <- prcomp(
-  t(logCPM_lipof_24),
-  scale. = FALSE
-)
-
-# Metadatos en el mismo orden del PCA
-groups_lipof_24 <- groups[
-  match(
-    rownames(pca_lipof_24$x),
-    groups$sample
-  ),
-]
-
-# Porcentaje de varianza explicada
-percent_var_lipof_24 <- 100 *
-  pca_lipof_24$sdev^2 /
-  sum(pca_lipof_24$sdev^2)
-
-# Colores
-colors_lipof_24 <- c(
-  "control_24" = "#BA68CB",
-  "vehicle_24" = "#FFB74D",
-  "lipof_24" = "#81C7B4"
-)
-
-# Gráfico
-par(
-  mar = c(5, 5, 4, 10),
-  xpd = TRUE
-)
-
-plot(
-  pca_lipof_24$x[, 1],
-  pca_lipof_24$x[, 2],
-  xlab = paste0(
-    "PC1 (",
-    round(percent_var_lipof_24[1], 1),
-    "%)"
-  ),
-  ylab = paste0(
-    "PC2 (",
-    round(percent_var_lipof_24[2], 1),
-    "%)"
-  ),
-  main = "PCA - Control, Vehículo y Lipof 24 h",
-  pch = 19,
-  cex = 2,
-  col = colors_lipof_24[
-    as.character(groups_lipof_24$condition)
-  ]
-)
-
-legend(
-  "topright",
-  inset = c(-0.12, 0),
-  legend = names(colors_lipof_24),
-  col = colors_lipof_24,
-  pch = 19,
-  pt.cex = 2,
-  bty = "n"
-)
-text(
-  pca_lipof_24$x[,1],
-  pca_lipof_24$x[,2],
-  labels = rownames(pca_lipof_24$x),
-  pos = 3,
-  cex = 0.7
-)
-
-
-
-
-################################################################################
-# PCA SOLO 6 h
-# Control 6 h + Vehicle 6 h + Lipof 6 h
-
-
-# Seleccionar muestras
-samples_lipof_6 <- groups$sample[
-  groups$condition %in% c(
-    "control_6",
-    "vehicle_6",
-    "lipof_6"
-  )
-]
-
-# Submatriz de expresión
-logCPM_lipof_6 <- logCPM_matrix[
-  ,
-  samples_lipof_6,
-  drop = FALSE
-]
-
-# PCA
-pca_lipof_6 <- prcomp(
-  t(logCPM_lipof_6),
-  scale. = FALSE
-)
-
-# Metadatos en el mismo orden del PCA
-groups_lipof_6 <- groups[
-  match(
-    rownames(pca_lipof_6$x),
-    groups$sample
-  ),
-]
-
-# Porcentaje de varianza explicada
-percent_var_lipof_6 <- 100 *
-  pca_lipof_6$sdev^2 /
-  sum(pca_lipof_6$sdev^2)
-
-# Colores
-colors_lipof_6 <- c(
-  "control_6" = "#BA68CB",
-  "vehicle_6" = "#FFB74D",
-  "lipof_6" = "#81C7B4"
-)
-
-# Gráfico
-plot(
-  pca_lipof_6$x[, 1],
-  pca_lipof_6$x[, 2],
-  xlab = paste0(
-    "PC1 (",
-    round(percent_var_lipof_6[1], 1),
-    "%)"
-  ),
-  ylab = paste0(
-    "PC2 (",
-    round(percent_var_lipof_6[2], 1),
-    "%)"
-  ),
-  main = "PCA - Control, Vehículo y Lipof 6 h",
-  pch = 19,
-  cex = 2,
-  col = colors_lipof_6[
-    as.character(groups_lipof_6$condition)
-  ]
-)
-
-legend(
-  "topright",
-  inset = c(-0.12, 0),
-  legend = names(colors_lipof_6),
-  col = colors_lipof_6,
-  pch = 19,
-  pt.cex = 2,
-  bty = "n"
-)
-
-text(
-  pca_lipof_6$x[,1],
-  pca_lipof_6$x[,2],
-  labels = rownames(pca_lipof_6$x),
-  pos = 3,
-  cex = 0.7
-)
-
-
-
-
-
-#---------------------------------------EtOH------------------------------------
-# PCA - EtOH 6 h
+# PCA - EtOH 6 h ---------------------------------------------------------------
 # Control 6 h + EtOH 6 h
-# ============================================================================
 
 # Seleccionar muestras
 samples_etoh_6 <- groups$sample[
@@ -951,9 +775,8 @@ legend(
 
 
 
-# PCA - EtOH 24 h
+# PCA - EtOH 24 h---------------------------------------------------------------
 # Control 24 h + EtOH 24 h
-# ============================================================================
 
 # Seleccionar muestras
 samples_etoh_24 <- groups$sample[
@@ -1048,7 +871,8 @@ barplot(
 # Factores de normalización: 
 dge$samples$norm.factors
 
-
+find("barplot")
+citation("graphics")
 
 # Distribución de expresión
 # General
@@ -1134,7 +958,7 @@ plot_correlation_heatmap <- function(
 
 
 #-------------------------------------------------------------------------------
-# Prueba con colores en lugar de etiquetas, pero este es para el general
+# Prueba con colores en lugar de etiquetas
 plot_correlation_heatmap <- function(
     expression_matrix,
     title) {
@@ -1190,10 +1014,10 @@ etoh_24    = "#81C7B4"'
 
 
 # General           PAra usar esta versión es necesario cambiar los colores
-plot_correlation_heatmap(
-  logCPM_matrix,
-  "Correlación entre muestras - General"
-)
+#plot_correlation_heatmap(
+#  logCPM_matrix,
+#  "Correlación entre muestras - General"
+#)
 
 # EtOH
 plot_correlation_heatmap(
@@ -1201,15 +1025,9 @@ plot_correlation_heatmap(
   "Correlación entre muestras - EtOH"
 )
 
-# Lipof
-plot_correlation_heatmap(
-  logCPM_lipof,
-  "Correlación entre muestras - Lipof"
-)
 
 
-
-
+################################################################################
 # MA plots por comparación  -----------------------------------------------
 # Vehiculo 6
 plotMD(qlf_results$vehicle_6_vs_control_6)
@@ -1236,14 +1054,12 @@ plotMD(qlf_results$etoh_24_vs_control_24)
 abline(h = c(-1, 1), lty = 2)
 
 
-
+################################################################################
 # Volcano plots -----------------------------------------------------------
 # Con filtro de muerte celular-------------------------------------------------
 
 library(KEGGREST)
 library(dplyr)
-
-
 library(KEGGREST)
 
 rutas_kegg <- c(
@@ -1330,6 +1146,9 @@ results[["etoh_6_vs_control_6"]] |>
   nrow()
 
 # Volcano plot
+install.packages("ggtext")
+library(ggtext)
+
 crear_volcano_kegg <- function(nombre_contraste, titulo) {
   
   res <- results[[nombre_contraste]]
@@ -1353,7 +1172,7 @@ crear_volcano_kegg <- function(nombre_contraste, titulo) {
   
   set.seed(123)
   
-  EnhancedVolcano(
+  p <- EnhancedVolcano(
     res,
     lab = res$gene_name,
     selectLab = genes_etiquetar,
@@ -1363,9 +1182,185 @@ crear_volcano_kegg <- function(nombre_contraste, titulo) {
     FCcutoff = 1,
     title = titulo,
     drawConnectors = TRUE,
-    max.overlaps = Inf
-  )
+    max.overlaps = Inf,
+    labSize = 4,
+    labFace = "bold",
+    labCol = "black",
+    axisLabSize = 4.5,
+    titleLabSize = 5
+  ) +
+    ggplot2::labs(
+      x = "Log2FC",
+      y = "p-value and log2FC"
+    ) +
+    ggplot2::theme(
+      text = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold"
+      ),
+      plot.title = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 16
+      ),
+      axis.title.x = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 16
+      ),
+      axis.title.y = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 16
+      ),
+      axis.text.x = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 14
+      ),
+      axis.text.y = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 14
+      ),
+      legend.text = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 12
+      ),
+      legend.title = ggplot2::element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 12
+      )
+    )
+  
+  p$layers[[4]]$aes_params$family <- "Times New Roman"
+  p$layers[[4]]$aes_params$fontface <- "bold"
+  
+  return(p)
 }
+
+
+# Plots------------------------------------------------------------------------
+# Etanólico 6 h
+crear_volcano_kegg(
+  "etoh_6_vs_control_6",
+  "EtOH 6 h vs Control 6 h"
+)
+
+
+# Etanólico 24 h
+crear_volcano_kegg(
+  "etoh_24_vs_control_24",
+  "EtOH 24 h vs Control 24 h"
+)
+
+# Lipofílico 6 h
+crear_volcano_kegg(
+  "lipof_6_vs_vehicle_6",
+  "Lipof 6 h vs Vehicle 6 h"
+)
+
+# Lipofílico 24 h
+crear_volcano_kegg(
+  "lipof_24_vs_vehicle_24",
+  "Lipof 24 h vs Vehicle 24 h"
+)
+
+# Vehículo 6 h
+crear_volcano_kegg(
+  "vehicle_6_vs_control_6",
+  "Vehículo 6 h vs Control 6 h"
+)
+
+# Vehículo 24 h
+crear_volcano_kegg(
+  "vehicle_24_vs_control_24",
+  "Vehículo 24 h vs Control 24 h"
+)
+
+
+
+################################################################################
+# Obtención de genes diferencialmente expresados asociados a muerte celular
+
+#Identificación de rutas
+rutas_interes <- c(
+  "Apoptosis",
+  "Necroptosis",
+  "Ferroptosis",
+  "Autofagia",
+  "Ciclo celular",
+  "Senalizacion_p53"
+)
+
+# Filtrar las rutas de interés de la tabla KEGG existente
+genes_interes_kegg <- tabla_genes_kegg %>%
+  dplyr::filter(Ruta %in% rutas_interes) %>%
+  dplyr::distinct(Ruta, Entrez, Simbolo)
+
+# Comparaciones de EtOH
+comparaciones_etoh <- c(
+  "etoh_6_vs_control_6",
+  "etoh_24_vs_control_24"
+)
+
+# Extraer DEGs asociados a las rutas de interés
+genes_etoh_interes <- lapply(comparaciones_etoh, function(comp) {
+  
+  tabla <- results[[comp]] %>%
+    tibble::rownames_to_column("gene_id") %>%
+    dplyr::filter(
+      FDR < 0.05,
+      abs(logFC) >= 1,
+      !is.na(gene_name),
+      gene_name != ""
+    )
+  
+  # Relacionar los DEGs con las rutas KEGG
+  tabla %>%
+    dplyr::inner_join(
+      genes_interes_kegg,
+      by = c("gene_name" = "Simbolo")
+    ) %>%
+    dplyr::mutate(
+      Comparacion = comp,
+      Regulacion = as.character(
+        ifelse(logFC > 0, "Sobreexpresado", "Subexpresado")
+      )
+    ) %>%
+    dplyr::select(
+      Comparacion,
+      Ruta,
+      gene_id,
+      gene_name,
+      Entrez,
+      logFC,
+      logCPM,
+      PValue,
+      FDR,
+      Regulacion
+    ) %>%
+    dplyr::arrange(Ruta, FDR)
+  
+})
+
+# Asignar nombres a las tablas
+names(genes_etoh_interes) <- comparaciones_etoh
+
+# Unir los resultados de ambas comparaciones
+tabla_final_etoh <- dplyr::bind_rows(genes_etoh_interes)
+
+# Creación del archivo
+writexl::write_xlsx(
+  list(
+    Todos_los_genes = tabla_final_etoh,
+    EtOH_6h = genes_etoh_interes[["etoh_6_vs_control_6"]],
+    EtOH_24h = genes_etoh_interes[["etoh_24_vs_control_24"]]
+  ),
+  "DEGs_rutas_interes_EtOH.xlsx"
+)
 
 
 # Comprobación------------------------------------------------------------------
@@ -1430,7 +1425,7 @@ comprobar_kegg <- lapply(names(rutas_kegg), function(nombre_ruta) {
 
 tabla_kegg_verificada <- do.call(rbind, comprobar_kegg)
 
-# Consultar los cinco genes de tu resultado
+# Consultar los cinco genes 
 genes_revisar <- c("SPATA2", "DDIT4", "JUN", "FOS", "THBS1")
 
 tabla_kegg_verificada |>
@@ -1462,46 +1457,6 @@ comprobacion <- asignaciones_originales |>
   )
 
 print(as.data.frame(comprobacion), row.names = FALSE)
-
-
-
-# Plots------------------------------------------------------------------------
-# Etanólico 6 h
-crear_volcano_kegg(
-  "etoh_6_vs_control_6",
-  "EtOH 6 h vs Control 6 h"
-)
-
-
-# Etanólico 24 h
-crear_volcano_kegg(
-  "etoh_24_vs_control_24",
-  "EtOH 24 h vs Control 24 h"
-)
-
-# Lipofílico 6 h
-crear_volcano_kegg(
-  "lipof_6_vs_vehicle_6",
-  "Lipof 6 h vs Vehicle 6 h"
-)
-
-# Lipofílico 24 h
-crear_volcano_kegg(
-  "lipof_24_vs_vehicle_24",
-  "Lipof 24 h vs Vehicle 24 h"
-)
-
-# Vehículo 6 h
-crear_volcano_kegg(
-  "vehicle_6_vs_control_6",
-  "Vehículo 6 h vs Control 6 h"
-)
-
-# Vehículo 24 h
-crear_volcano_kegg(
-  "vehicle_24_vs_control_24",
-  "Vehículo 24 h vs Control 24 h"
-)
 
 
 
@@ -1750,7 +1705,7 @@ ranking_test <- make_entrez_ranking(
 any(!is.finite(ranking_test))
 
 
-# GSEA - GO
+# GSEA - GO---------------------------------------------------------------------
 library(BiocParallel)
 
 register(SerialParam())
@@ -1770,6 +1725,7 @@ gsea_go <- lapply(
       maxGSSize = 500,
       pvalueCutoff = 0.05,
       pAdjustMethod = "BH",  # Benjamini-Hochberg
+      #method = "multilevel",
       eps = 0, # Estimar valores-p menores
       nPermSimple = 10000, #Realizar más estimaciones/permutaciones
       verbose = FALSE
@@ -1821,6 +1777,8 @@ gsea_go_df <- lapply(
   gsea_go,
   as.data.frame
 )
+
+
 
 # Filtración con simplify GO-GSEA-----------------------------------------------
 # 1. REDUCCIÓN DE REDUNDANCIA EN GO-BP
@@ -1937,6 +1895,7 @@ gsea_kegg <- lapply(
       maxGSSize = 500,
       pvalueCutoff = 0.05,
       pAdjustMethod = "BH",
+      #method = "multilevel",
       verbose = FALSE,
       eps = 0,
       nPermSimple = 10000
@@ -2014,12 +1973,14 @@ gsea_reactome <- lapply(
       minGSSize = 10,
       maxGSSize = 500,
       pvalueCutoff = 0.05,
+      #method = "multilevel",
       pAdjustMethod = "BH",
       verbose = FALSE
     )
   }
 ) # 19 avisos   // 17 // 15
 names(gsea_reactome) <- names(results)
+
 
 lapply(
   gsea_reactome,
@@ -2061,14 +2022,13 @@ plots_reactome[["vehicle_24_vs_control_24"]]
 
 
 
-# ============================================================================
+################################################################################
 # BARPLOTS GSEA COMBINADOS - GO SIMPLIFICADO + KEGG + REACTOME
-# ============================================================================
-#_______________________________________________________________________________
 # Gráficos combinados con selección de rutas
 
 library(dplyr)
 library(ggplot2)
+library(stringr)
 
 combine_gsea_simplified_select <- function(comparison) {
   
@@ -2171,7 +2131,7 @@ combine_gsea_simplified_select <- function(comparison) {
       desc(abs(NES)),
       .by_group = TRUE
     ) |>
-    slice_head(n = 10) |>
+    slice_head(n = 6) |>
     ungroup()
   
   # 6. Calcular número de genes leading edge
@@ -2224,7 +2184,10 @@ plot_gsea_bar_simplified_select <- function(comparison) {
     df,
     aes(
       x = NES,
-      y = reorder(Description, NES),
+      y = reorder(
+        stringr::str_wrap(Description, width = 60),
+        NES
+      ),
       fill = Database
     )
   ) +
@@ -2233,13 +2196,25 @@ plot_gsea_bar_simplified_select <- function(comparison) {
       linetype = "dashed",
       color = "grey60"
     ) +
+    annotate(
+      "text",
+      x = -Inf,
+      y = Inf,
+      label = "B",
+      hjust = -0.5,
+      vjust = 1.5,
+      size = 6,
+      fontface = "bold"
+    ) +
     geom_col(width = 0.7) +
     geom_text(
       aes(
         label = Gene_label,
         hjust = ifelse(NES > 0, -0.1, 1.1)
       ),
-      size = 3,
+      size = 4,
+      family = "Times New Roman",
+      fontface = "bold",
       show.legend = FALSE
     ) +
     scale_x_continuous(
@@ -2256,17 +2231,59 @@ plot_gsea_bar_simplified_select <- function(comparison) {
       fill = "Base de datos",
       caption = "Etiquetas: genes leading edge / tamaño de la ruta"
     ) +
-    theme_classic(base_size = 11) +
+    theme_classic(base_size = 14) +
     theme(
+      text = element_text(
+        family = "Times New Roman",
+        face = "bold"
+      ),
       plot.title = element_text(
+        family = "Times New Roman",
         face = "bold",
+        size = 16,
         hjust = 0.5
       ),
-      axis.text.y = element_text(size = 8),
-      legend.position = "bottom",
-      strip.text.y = element_text(face = "bold")
+      axis.title.x = element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 16
+      ),
+      axis.text.x = element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 16
+      ),
+      axis.text.y = element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 13,
+        lineheight = 0.9
+      ),
+      legend.title = element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 16
+      ),
+      legend.text = element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 16
+      ),
+      plot.caption = element_text(
+        family = "Times New Roman",
+        face = "bold",
+        size = 12
+      ),
+      strip.text.y = element_text(
+        family = "Times New Roman",
+        face = "bold"
+      ),
+      legend.position = "bottom"
     ) +
-    coord_cartesian(clip = "off")
+    coord_cartesian(clip = "off") #+
+    #theme(
+     # plot.margin = margin(10, 25, 10, 10)
+    #)
 }
 
 # Generar gráficos
@@ -2302,8 +2319,49 @@ plots_gsea_bar_simplified_select[[
 plots_gsea_bar_simplified_select[[
   "vehicle_24_vs_control_24"
 ]]
+citation("pathview")
 
 
+comparison_prueba <- "etoh_24_vs_control_24"
+
+gsea_combined_simplified_select[[comparison_prueba]] |>
+  dplyr::filter(
+    grepl(
+      "Regulation of Apoptosis|G2/M DNA damage checkpoint",
+      Description,
+      ignore.case = TRUE
+    )
+  ) |>
+  dplyr::select(
+    Database,
+    Description,
+    Categoria,
+    Priority,
+    p.adjust,
+    NES
+  )
+
+bind_rows(
+  gsea_go_simplified_df[[comparison_prueba]] |>
+    dplyr::mutate(Database = "GO BP"),
+  gsea_kegg_df_depurado[[comparison_prueba]] |>
+    dplyr::mutate(Database = "KEGG"),
+  gsea_reactome_df_depurado[[comparison_prueba]] |>
+    dplyr::mutate(Database = "Reactome")
+) |>
+  dplyr::filter(
+    grepl(
+      "Regulation of Apoptosis|G2/M DNA damage checkpoint",
+      Description,
+      ignore.case = TRUE
+    )
+  ) |>
+  dplyr::select(
+    Database,
+    Description,
+    p.adjust,
+    NES
+  )
 
 
 # Número de términos significativos por contraste y base de datos
@@ -2325,6 +2383,130 @@ significativos_gsea <- data.frame(
 
 significativos_gsea
 
+
+# Identificación de NES de las rutas
+nes_rutas_interes <- gsea_combined_simplified_select[[comparison_prueba]] %>%
+  filter(
+    grepl(
+      "ferroptosis|autophagy|cell cycle",
+      Description,
+      ignore.case = TRUE
+    )
+  ) %>%
+  select(
+    Database,
+    ID,
+    Description,
+    NES,
+    pvalue,
+    p.adjust,
+    LeadingEdge_n,
+    setSize
+  ) %>%
+  arrange(Database, Description)
+
+nes_rutas_interes
+
+
+# Verificación------------------------------------------------------------------
+library(dplyr)
+
+# Palabras clave de rutas directamente relacionadas con muerte celular
+patron_muerte <- paste(
+  c(
+    "apoptosis",
+    "necroptosis",
+    "ferroptosis",
+    "pyroptosis",
+    "programmed cell death",
+    "cell death",
+    "necrosis",
+    "caspase",
+    "death receptor",
+    "anoikis",
+    "inflammasome"
+  ),
+  collapse = "|"
+)
+
+# Combinar los resultados completos de GSEA
+gsea_muerte <- bind_rows(
+  lapply(names(gsea_go_df), function(comp) {
+    gsea_go_df[[comp]] |>
+      mutate(
+        Comparacion = comp,
+        Database = "GO BP"
+      )
+  }),
+  lapply(names(gsea_kegg_df_depurado), function(comp) {
+    gsea_kegg_df_depurado[[comp]] |>
+      mutate(
+        Comparacion = comp,
+        Database = "KEGG"
+      )
+  }),
+  lapply(names(gsea_reactome_df_depurado), function(comp) {
+    gsea_reactome_df_depurado[[comp]] |>
+      mutate(
+        Comparacion = comp,
+        Database = "Reactome"
+      )
+  })
+)
+
+# Identificar términos relacionados con muerte celular
+rutas_muerte_significativas <- gsea_muerte |>
+  filter(
+    !is.na(p.adjust),
+    p.adjust < 0.05,
+    !is.na(NES),
+    is.finite(NES),
+    grepl(
+      patron_muerte,
+      Description,
+      ignore.case = TRUE
+    )
+  ) |>
+  dplyr::select(
+    Comparacion,
+    Database,
+    ID,
+    Description,
+    setSize,
+    NES,
+    pvalue,
+    p.adjust,
+    core_enrichment
+  ) |>
+  arrange(Comparacion, Database, p.adjust)
+
+# Ver todas las rutas identificadas
+View(rutas_muerte_significativas)
+rutas_muerte_significativas
+
+# Comparar rutas de muerte celular de la tabla y del gráfico
+comparar_rutas <- function(comparacion) {
+  
+  tabla <- rutas_muerte_significativas |>
+    dplyr::filter(Comparacion == comparacion) |>
+    dplyr::select(Database, ID, Description, NES, p.adjust) |>
+    dplyr::mutate(Origen = "Tabla completa")
+  
+  grafico <- gsea_combined_simplified_select[[comparacion]] |>
+    dplyr::filter(Categoria == "Muerte celular") |>
+    dplyr::select(Database, ID, Description, NES, p.adjust) |>
+    dplyr::mutate(Origen = "Bar plot")
+  
+  dplyr::bind_rows(tabla, grafico) |>
+    dplyr::arrange(Database, Description, Origen)
+}
+
+# Ejemplos: comparar las dos temporalidades
+comparar_rutas("etoh_6_vs_control_6")
+comparar_rutas("etoh_24_vs_control_24")
+
+comparar_rutas("lipof_6_vs_vehicle_6")
+comparar_rutas("lipof_24_vs_vehicle_24")
 
 
 
@@ -2499,169 +2681,411 @@ plots_kegg_death[["etoh_24_vs_control_24"]]
 
 
 
-
-
-
+################################################################
 # ============================================================
 # MAPAS KEGG - DEG Y LEADING EDGE
 # ============================================================
 
-library(pathview)
+# Pruebas de otros gráficos
+# Carga de paquetes
 library(dplyr)
+library(tidyr)
+library(pathview)
 library(png)
+library(pheatmap)
+library(ggplot2)
+library(grid)
+library(gridExtra)
 
-dir.create("Mapas_KEGG_GSEA", showWarnings = FALSE)
+# Comparaciones por tratamiento
+comparison_pairs <- list(
+  etoh = list(
+    h6 = "etoh_6_vs_control_6",
+    h24 = "etoh_24_vs_control_24",
+    label = "EtOH"
+  ),
+  lipof = list(
+    h6 = "lipof_6_vs_vehicle_6",
+    h24 = "lipof_24_vs_vehicle_24",
+    label = "Lipof"
+  )
+)
 
+# Colores de bordes para mapas compartidos/exclusivos
+border_colors <- list(
+  exclusive6 = "#D32F2F",     # rojo
+  exclusive24 = "#1976D2",    # azul
+  shared = "#7B1FA2",         # morado
+  hetero_noshared = "#000000",# negro dashed
+  hetero_shared = "#000000"   # negro sólido
+)
 
-# 1. Preparar resultados de expresión diferencial
+# Escala de color para logFC
+logfc_palette <- colorRampPalette(c("#2166AC", "#F7F7F7", "#B2182B"))(100)
 
-prepare_kegg_genes <- function(comparison) {
+# Preparar resultados de EdgeR - log2FC de todos los genes
+prepare_kegg_genes_allfc <- function(comparison) {
   
   result <- results[[comparison]]
   
-  if (is.null(result)) {
-    stop("Comparación no encontrada: ", comparison)
-  }
-  
   genes_df <- data.frame(
-    ENSEMBL = sub("\\..*$", "", rownames(result)),
-    Gene = result$gene_name,
+    ENSEMBL = rownames(result),
     logFC = result$logFC,
-    PValue = result$PValue,
     FDR = result$FDR,
+    PValue = result$PValue,
+    F = result$F,
+    gene_name = result$gene_name,
+    gene_biotype = result$gene_biotype,
     stringsAsFactors = FALSE
-  )
-  
-  genes_df <- genes_df %>%
-    dplyr::inner_join(
+  ) %>%
+    left_join(
       gene_conversion %>%
         dplyr::select(ENSEMBL, ENTREZID) %>%
         dplyr::distinct(),
       by = "ENSEMBL"
     ) %>%
-    dplyr::filter(
+    filter(
       !is.na(ENTREZID),
       is.finite(logFC)
     ) %>%
-    dplyr::arrange(
+    arrange(
       ENTREZID,
-      dplyr::desc(abs(logFC)),
+      desc(abs(logFC)),
       ENSEMBL
     ) %>%
-    dplyr::distinct(ENTREZID, .keep_all = TRUE) %>%
-    dplyr::mutate(
+    distinct(ENTREZID, .keep_all = TRUE) %>%
+    mutate(
       ENTREZID = as.character(ENTREZID),
-      
-      DEG = !is.na(FDR) &
-        FDR < 0.05 &
-        abs(logFC) >= 1,
-      
-      Regulation = dplyr::case_when(
-        DEG & logFC > 0 ~ "Upregulated",
-        DEG & logFC < 0 ~ "Downregulated",
-        TRUE ~ "No DEG"
-      ),
-      
-      logFC_plot = ifelse(DEG, logFC, NA_real_)
+      DEG = !is.na(FDR) & FDR < 0.05 & abs(logFC) >= 1
     )
   
   return(genes_df)
 }
 
 
-# 2. Preparar tabla de genes y leading edge
-
-make_kegg_gene_table <- function(comparison, pathway_id) {
+# Extraer los genes del leading edge para una ruta y comparación
+get_leading_edge_ids <- function(comparison, pathway_id) {
   
-  genes_df <- prepare_kegg_genes(comparison)
   gsea_obj <- gsea_kegg_death[[comparison]]
   
   if (is.null(gsea_obj)) {
-    stop("Sin resultados GSEA: ", comparison)
+    return(character(0))
   }
   
   gsea_df <- as.data.frame(gsea_obj)
   
-  pathway_row <- gsea_df[
-    !is.na(gsea_df$ID) &
-      gsea_df$ID == pathway_id,
-    ,
-    drop = FALSE
-  ]
+  pathway_row <- gsea_df %>%
+    filter(!is.na(ID), ID == pathway_id)
   
   if (nrow(pathway_row) == 0) {
-    stop("Ruta no disponible en GSEA: ", pathway_id)
+    return(character(0))
+  }
+  
+  core <- pathway_row$core_enrichment[1]
+  
+  if (is.na(core) || !nzchar(core)) {
+    return(character(0))
+  }
+  
+  leading_genes <- strsplit(core, "/", fixed = TRUE)[[1]]
+  leading_genes <- unique(as.character(leading_genes))
+  
+  return(leading_genes)
+}
+
+# Según KEGG
+get_pathway_gene_ids <- function(comparison, pathway_id) {
+  
+  gsea_obj <- gsea_kegg_death[[comparison]]
+  
+  if (is.null(gsea_obj)) {
+    return(character(0))
   }
   
   pathway_genes <- gsea_obj@geneSets[[pathway_id]]
   
   if (is.null(pathway_genes)) {
-    stop("Conjunto de genes no disponible: ", pathway_id)
+    return(character(0))
   }
   
-  core <- pathway_row$core_enrichment[1] # Extraigo los LE
+  return(as.character(pathway_genes))
+}
+
+# Tablas
+make_kegg_gene_table_allfc <- function(comparison, pathway_id) {
   
-  leading_genes <- if (!is.na(core) && nzchar(core)) {
-    strsplit(core, "/", fixed = TRUE)[[1]]
-  } else {
-    character(0)
+  genes_df <- prepare_kegg_genes_allfc(comparison)
+  pathway_genes <- get_pathway_gene_ids(comparison, pathway_id)
+  leading_ids <- get_leading_edge_ids(comparison, pathway_id)
+  
+  if (length(pathway_genes) == 0) {
+    stop("Ruta no disponible en GSEA para ", comparison, " | ", pathway_id)
   }
   
-  tabla <- genes_df %>% # Los clasifico
-    dplyr::filter(
-      ENTREZID %in% as.character(pathway_genes)
-    ) %>%
-    dplyr::mutate(
-      LeadingEdge = ENTREZID %in% leading_genes,
-      
-      Categoria = dplyr::case_when(
-        DEG & LeadingEdge ~ "DEG + Leading edge",
-        DEG & !LeadingEdge ~ "Solo DEG",
-        !DEG & LeadingEdge ~ "Solo leading edge",
-        TRUE ~ "Ninguno"
-      ),
-      
-      NES_ruta = pathway_row$NES[1], 
-      FDR_GSEA = pathway_row$p.adjust[1], 
+  tabla <- genes_df %>%
+    filter(ENTREZID %in% pathway_genes) %>%
+    mutate(
+      LeadingEdge = ENTREZID %in% leading_ids,
       Comparison = comparison,
-      KEGG_ID = pathway_id,
-      .before = 1
+      KEGG_ID = pathway_id
     ) %>%
-    dplyr::arrange(
-      dplyr::desc(LeadingEdge),
-      dplyr::desc(DEG),
-      FDR
-    ) # Primero van los que son LE y DEG y por último por FDR
+    arrange(desc(LeadingEdge), FDR, desc(abs(logFC)))
   
   return(list(
     genes = tabla,
-    leading_ids = leading_genes
+    leading_ids = leading_ids,
+    pathway_ids = pathway_genes
   ))
 }
 
 
-# 3. Añadir bordes negros a nodos del leading edge
 
-add_leading_edge_borders <- function(
-    image_file,
-    plot_data,
-    leading_ids,
-    output_file,
+
+# Solucionar lo de la leyenda del log2FC
+save_compact_logfc_legend <- function(output_file, limit_logFC = 3) {
+  
+  df <- data.frame(
+    x = seq(-limit_logFC, limit_logFC, length.out = 200),
+    y = 1
+  )
+  
+  p <- ggplot(df, aes(x = x, y = y, fill = x)) +
+    geom_tile() +
+    scale_fill_gradient2(
+      low = "#2166AC",
+      mid = "#F7F7F7",
+      high = "#B2182B",
+      midpoint = 0,
+      limits = c(-limit_logFC, limit_logFC),
+      name = "log2FC"
+    ) +
+    scale_x_continuous(
+      breaks = c(-limit_logFC, 0, limit_logFC)
+    ) +
+    theme_void() +
+    theme(
+      legend.position = "bottom",
+      axis.text.x = element_text(size = 8, colour = "black"),
+      axis.ticks.x = element_line(colour = "black"),
+      plot.margin = margin(2, 2, 2, 2)
+    )
+  
+  ggsave(
+    filename = output_file,
+    plot = p,
+    width = 4,
+    height = 1.2,
+    dpi = 300,
+    bg = "white"
+  )
+}
+
+# Bordes
+hex_to_rgb01 <- function(hex) {
+  rgb <- grDevices::col2rgb(hex) / 255
+  as.numeric(rgb[,1])
+}
+
+paint_pixels <- function(img, rows, cols, color_hex) {
+  
+  rows <- rows[rows >= 1 & rows <= dim(img)[1]]
+  cols <- cols[cols >= 1 & cols <= dim(img)[2]]
+  
+  if (!length(rows) || !length(cols)) return(img)
+  
+  rgb <- hex_to_rgb01(color_hex)
+  
+  for (ch in 1:3) {
+    img[rows, cols, ch] <- rgb[ch]
+  }
+  
+  if (dim(img)[3] == 4) {
+    img[rows, cols, 4] <- 1
+  }
+  
+  return(img)
+}
+
+
+# Sólidos
+draw_solid_border <- function(img, left, right, top, bottom,
+                              color_hex = "#000000", border_width = 3) {
+  
+  for (b in seq_len(border_width) - 1L) {
+    img <- paint_pixels(img, top + b, left:right, color_hex)
+    img <- paint_pixels(img, bottom - b, left:right, color_hex)
+    img <- paint_pixels(img, top:bottom, left + b, color_hex)
+    img <- paint_pixels(img, top:bottom, right - b, color_hex)
+  }
+  
+  return(img)
+}
+
+# Dashed
+draw_dashed_border <- function(img, left, right, top, bottom,
+                               color_hex = "#000000",
+                               border_width = 3,
+                               dash_len = 10,
+                               gap_len = 6) {
+  
+  pattern_step <- dash_len + gap_len
+  
+  x_seq <- left:right
+  y_seq <- top:bottom
+  
+  for (b in seq_len(border_width) - 1L) {
+    
+    # arriba y abajo
+    keep_x <- x_seq[((seq_along(x_seq) - 1) %% pattern_step) < dash_len]
+    img <- paint_pixels(img, top + b, keep_x, color_hex)
+    img <- paint_pixels(img, bottom - b, keep_x, color_hex)
+    
+    # izquierda y derecha
+    keep_y <- y_seq[((seq_along(y_seq) - 1) %% pattern_step) < dash_len]
+    img <- paint_pixels(img, keep_y, left + b, color_hex)
+    img <- paint_pixels(img, keep_y, right - b, color_hex)
+  }
+  
+  return(img)
+}
+
+
+# Mapas individuales TODOS los Log2FC -------------------------------------
+
+# MAPAS KEGG: log2FC de todos los genes + bordes negros LE
+
+plot_kegg_logfc_le_map <- function(
+    comparison,
+    pathway_id,
+    out_dir = "Mapas_logFC_LE",
+    limit_logFC = 0.5,
     border_width = 3
 ) {
   
-  img <- png::readPNG(image_file)
+  # 1. Preparar los datos
+  info <- make_kegg_gene_table_allfc(
+    comparison,
+    pathway_id
+  )
   
-  h <- dim(img)[1]
-  w <- dim(img)[2]
+  tabla <- info$genes
   
-  # Identificar genes de cada nodo KEGG
-  node_ids <- if ("all.mapped" %in% names(plot_data)) {
-    as.character(plot_data$all.mapped)
-  } else {
-    as.character(plot_data$kegg.names)
+  if (nrow(tabla) == 0) {
+    stop("No hay genes mapeados para esta ruta.")
   }
   
+  # 2. Crear carpeta de resultados
+  comp_dir <- file.path(
+    out_dir,
+    comparison,
+    pathway_id
+  )
+  
+  dir.create(
+    comp_dir,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  
+  # 3. Guardar todos los valores log2FC
+  gene_values <- tabla$logFC
+  names(gene_values) <- as.character(tabla$ENTREZID)
+  
+  stopifnot(
+    length(gene_values) > 0,
+    all(is.finite(gene_values)),
+    !anyDuplicated(names(gene_values))
+  )
+  
+  message("Genes con log2FC: ", length(gene_values))
+  message("Genes LE: ", length(info$leading_ids))
+  
+  # 4. Generar mapa KEGG
+  suffix <- paste0(
+    comparison, "_", pathway_id, "_allFC"
+  )
+  
+  original_name <- paste0(
+    pathway_id, ".", suffix, ".png"
+  )
+  
+  pv <- pathview::pathview(
+    gene.data = gene_values,
+    pathway.id = pathway_id,
+    species = "hsa",
+    gene.idtype = "entrez",
+    kegg.native = TRUE,
+    
+    # Eliminar barra interna
+    plot.col.key = FALSE,
+    
+    na.col = "#D3D3D3",
+    
+    low = list(gene = "#2166AC"),
+    mid = list(gene = "#F7F7F7"),
+    high = list(gene = "#B2182B"),
+    
+    limit = list(
+      gene = limit_logFC,
+      cpd = 1
+    ),
+    
+    bins = list(
+      gene = 100,
+      cpd = 10
+    ),
+    
+    both.dirs = list(
+      gene = TRUE,
+      cpd = TRUE
+    ),
+    
+    node.sum = "max.abs",
+    out.suffix = suffix,
+    kegg.dir = comp_dir
+  )
+  
+  if (is.null(pv$plot.data.gene)) {
+    stop("Pathview no devolvió los nodos génicos.")
+  }
+  
+  # 5. Localizar el PNG generado por Pathview
+  possible_files <- c(
+    file.path(comp_dir, original_name),
+    file.path(getwd(), original_name)
+  )
+  
+  existing_files <- unique(
+    possible_files[file.exists(possible_files)]
+  )
+  
+  if (length(existing_files) == 0) {
+    stop(
+      "No se encontró el PNG generado: ",
+      original_name
+    )
+  }
+  
+  # Si hay más de una copia, seleccionar la modificada más recientemente
+  file_info <- file.info(existing_files)
+  original_file <- existing_files[
+    which.max(file_info$mtime)
+  ]
+  
+  message("PNG utilizado como base: ", original_file)
+  
+  # 6. Leer imagen y nodos
+  img <- png::readPNG(original_file)
+  
+  plot_data <- pv$plot.data.gene
+  
+  if ("all.mapped" %in% names(plot_data)) {
+    node_ids <- as.character(plot_data$all.mapped)
+  } else {
+    node_ids <- as.character(plot_data$kegg.names)
+  }
+  
+  # 7. Identificar nodos que contienen genes LE
   has_leading <- vapply(
     node_ids,
     function(ids) {
@@ -2671,10 +3095,15 @@ add_leading_edge_borders <- function(
       }
       
       genes_nodo <- trimws(
-        unlist(strsplit(ids, "[,;/[:space:]]+"))
+        unlist(
+          strsplit(ids, "[,;/[:space:]]+")
+        )
       )
       
-      any(genes_nodo %in% leading_ids)
+      any(
+        genes_nodo %in%
+          as.character(info$leading_ids)
+      )
     },
     logical(1)
   )
@@ -2685,30 +3114,268 @@ add_leading_edge_borders <- function(
     drop = FALSE
   ]
   
-  # Dibujar bordes en la imagen
-  paint_black <- function(rows, cols) {
-    
-    rows <- rows[rows >= 1 & rows <= h]
-    cols <- cols[cols >= 1 & cols <= w]
-    
-    if (!length(rows) || !length(cols)) {
-      return(invisible(NULL))
-    }
-    
-    for (ch in 1:3) {
-      img[rows, cols, ch] <<- 0
-    }
-    
-    if (dim(img)[3] == 4) {
-      img[rows, cols, 4] <<- 1
-    }
-  }
+  message(
+    "Nodos con LE identificados: ",
+    nrow(selected_nodes)
+  )
   
-  n_marked <- 0L
-  
+  # 8. Dibujar los bordes negros
   for (i in seq_len(nrow(selected_nodes))) {
     
     node <- selected_nodes[i, ]
+    
+    x <- as.numeric(node$x)
+    y <- as.numeric(node$y)
+    
+    nw <- as.numeric(node$width)
+    nh <- as.numeric(node$height)
+    
+    if (!all(is.finite(c(x, y, nw, nh)))) {
+      next
+    }
+    
+    left <- round(x - nw / 2)
+    right <- round(x + nw / 2)
+    
+    top <- round(y - nh / 2)
+    bottom <- round(y + nh / 2)
+    
+    img <- draw_solid_border(
+      img,
+      left,
+      right,
+      top,
+      bottom,
+      color_hex = "#000000",
+      border_width = border_width
+    )
+  }
+  
+  # 9. Guardar el mapa final
+  final_file <- file.path(
+    comp_dir,
+    paste0(pathway_id, "_logFC_LE.png")
+  )
+  
+  png::writePNG(img, final_file)
+  
+  # 10. Guardar tabla de respaldo
+  write.csv(
+    tabla,
+    file.path(
+      comp_dir,
+      paste0(pathway_id, "_genes_allFC.csv")
+    ),
+    row.names = FALSE
+  )
+  
+  message("Mapa final guardado: ", final_file)
+  
+  return(invisible(final_file))
+}
+
+
+
+# Ejecutar todos los mapas
+for (trt in names(comparison_pairs)) {
+  
+  for (cmp in c(comparison_pairs[[trt]]$h6, comparison_pairs[[trt]]$h24)) {
+    
+    for (pathway_id in names(death_pathways)) {
+      
+      message("Procesando mapa logFC + LE: ", cmp, " | ", pathway_id)
+      
+      tryCatch(
+        plot_kegg_logfc_le_map(
+          comparison = cmp,
+          pathway_id = pathway_id,
+          out_dir = "Mapas_logFC_LE",
+          limit_logFC = 0.5,
+          border_width = 3
+        ),
+        error = function(e) {
+          message("Error en ", cmp, " | ", pathway_id, ": ", conditionMessage(e))
+        }
+      )
+    }
+  }
+}
+
+
+
+
+# Mapas con LE genes compartidos/exclusivos -------------------------------
+# Clasificación de genes y nodos
+classify_node_status <- function(node_gene_ids, le6, le24) {
+  
+  node_gene_ids <- unique(node_gene_ids)
+  
+  shared_ids <- intersect(le6, le24)
+  excl6_ids <- setdiff(le6, le24)
+  excl24_ids <- setdiff(le24, le6)
+  
+  has_shared <- any(node_gene_ids %in% shared_ids)
+  has_excl6 <- any(node_gene_ids %in% excl6_ids)
+  has_excl24 <- any(node_gene_ids %in% excl24_ids)
+  
+  if (has_shared && !has_excl6 && !has_excl24) {
+    return("shared")
+  }
+  
+  if (!has_shared && has_excl6 && !has_excl24) {
+    return("exclusive6")
+  }
+  
+  if (!has_shared && !has_excl6 && has_excl24) {
+    return("exclusive24")
+  }
+  
+  if (!has_shared && has_excl6 && has_excl24) {
+    return("hetero_noshared")
+  }
+  
+  if (has_shared && (has_excl6 || has_excl24)) {
+    return("hetero_shared")
+  }
+  
+  return(NA_character_)
+}
+
+# Mapas
+
+# MAPAS KEGG: leading edge compartidos y exclusivos
+# Un mapa por tratamiento y ruta, integrando 6 h y 24 h
+
+plot_kegg_shared_exclusive_map <- function(
+    treatment,
+    pathway_id,
+    out_dir = "Mapas_shared_exclusive",
+    border_width = 4
+) {
+  
+  # 1. Identificar las comparaciones
+  cmp6 <- comparison_pairs[[treatment]]$h6
+  cmp24 <- comparison_pairs[[treatment]]$h24
+  
+  # 2. Recuperar los leading edge genes
+  le6 <- get_leading_edge_ids(cmp6, pathway_id)
+  le24 <- get_leading_edge_ids(cmp24, pathway_id)
+  
+  message("LE 6 h: ", length(le6))
+  message("LE 24 h: ", length(le24))
+  message("LE compartidos: ", length(intersect(le6, le24)))
+  
+  # 3. Crear carpeta
+  trt_dir <- file.path(out_dir, treatment, pathway_id)
+  
+  dir.create(
+    trt_dir,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  
+  # 4. Recuperar genes de la ruta en ambos tiempos
+  genes_base <- unique(c(
+    get_pathway_gene_ids(cmp6, pathway_id),
+    get_pathway_gene_ids(cmp24, pathway_id)
+  ))
+  
+  if (length(genes_base) == 0) {
+    stop("No hay genes de la ruta para este tratamiento.")
+  }
+  
+  # 5. Crear valores neutros
+  base_values <- rep(0, length(genes_base))
+  names(base_values) <- genes_base
+  
+  suffix <- paste0(
+    treatment, "_", pathway_id, "_sharedexclusive"
+  )
+  
+  original_name <- paste0(
+    pathway_id, ".", suffix, ".png"
+  )
+  
+  # 6. Generar mapa base con Pathview
+  pv <- pathview::pathview(
+    gene.data = base_values,
+    pathway.id = pathway_id,
+    species = "hsa",
+    gene.idtype = "entrez",
+    kegg.native = TRUE,
+    plot.col.key = FALSE,
+    
+    na.col = "#D3D3D3",
+    low = list(gene = "#F2F2F2"),
+    mid = list(gene = "#F2F2F2"),
+    high = list(gene = "#F2F2F2"),
+    
+    limit = list(gene = 1, cpd = 1),
+    bins = list(gene = 10, cpd = 10),
+    both.dirs = list(gene = FALSE, cpd = FALSE),
+    
+    node.sum = "max.abs",
+    out.suffix = suffix,
+    kegg.dir = trt_dir
+  )
+  
+  if (is.null(pv$plot.data.gene)) {
+    stop("Pathview no devolvió los nodos.")
+  }
+  
+  # 7. Buscar el PNG donde realmente se guardó
+  possible_files <- c(
+    file.path(getwd(), original_name),
+    file.path(trt_dir, original_name)
+  )
+  
+  existing_files <- possible_files[
+    file.exists(possible_files)
+  ]
+  
+  if (length(existing_files) == 0) {
+    stop(
+      "No se encontró el mapa base: ",
+      original_name
+    )
+  }
+  
+  original_file <- existing_files[1]
+  
+  # 8. Leer imagen y nodos
+  img <- png::readPNG(original_file)
+  plot_data <- pv$plot.data.gene
+  
+  node_ids <- if ("all.mapped" %in% names(plot_data)) {
+    as.character(plot_data$all.mapped)
+  } else {
+    as.character(plot_data$kegg.names)
+  }
+  
+  # 9. Clasificar y dibujar bordes
+  node_summary <- list()
+  n_marked <- 0L
+  
+  for (i in seq_len(nrow(plot_data))) {
+    
+    node <- plot_data[i, ]
+    ids <- node_ids[i]
+    
+    if (is.na(ids) || !nzchar(ids)) next
+    
+    genes_nodo <- trimws(
+      unlist(strsplit(ids, "[,;/[:space:]]+"))
+    )
+    
+    genes_nodo <- genes_nodo[genes_nodo != ""]
+    
+    status <- classify_node_status(
+      genes_nodo,
+      le6,
+      le24
+    )
+    
+    if (is.na(status)) next
     
     x <- as.numeric(node$x)
     y <- as.numeric(node$y)
@@ -2722,167 +3389,518 @@ add_leading_edge_borders <- function(
     top <- round(y - nh / 2)
     bottom <- round(y + nh / 2)
     
-    for (b in seq_len(border_width) - 1L) {
+    if (status == "exclusive6") {
       
-      paint_black(top + b, left:right)
-      paint_black(bottom - b, left:right)
+      img <- draw_solid_border(
+        img, left, right, top, bottom,
+        color_hex = "#D32F2F",
+        border_width = border_width
+      )
       
-      paint_black(top:bottom, left + b)
-      paint_black(top:bottom, right - b)
+    } else if (status == "exclusive24") {
+      
+      img <- draw_solid_border(
+        img, left, right, top, bottom,
+        color_hex = "#1976D2",
+        border_width = border_width
+      )
+      
+    } else if (status == "shared") {
+      
+      img <- draw_solid_border(
+        img, left, right, top, bottom,
+        color_hex = "#7B1FA2",
+        border_width = border_width
+      )
+      
+    } else if (status == "hetero_noshared") {
+      
+      img <- draw_dashed_border(
+        img, left, right, top, bottom,
+        color_hex = "#000000",
+        border_width = border_width,
+        dash_len = 10,
+        gap_len = 6
+      )
+      
+    } else if (status == "hetero_shared") {
+      
+      img <- draw_solid_border(
+        img, left, right, top, bottom,
+        color_hex = "#000000",
+        border_width = border_width
+      )
     }
     
     n_marked <- n_marked + 1L
+    
+    # Registrar genes que justifican la clasificación
+    node_summary[[length(node_summary) + 1L]] <- data.frame(
+      Treatment = treatment,
+      Pathway_ID = pathway_id,
+      Node_index = i,
+      Node_genes = ids,
+      LE_exclusive_6h = paste(
+        intersect(genes_nodo, setdiff(le6, le24)),
+        collapse = "; "
+      ),
+      LE_exclusive_24h = paste(
+        intersect(genes_nodo, setdiff(le24, le6)),
+        collapse = "; "
+      ),
+      LE_shared = paste(
+        intersect(genes_nodo, intersect(le6, le24)),
+        collapse = "; "
+      ),
+      Node_category = status,
+      stringsAsFactors = FALSE
+    )
   }
   
-  png::writePNG(img, output_file)
+  message("Nodos con bordes asignados: ", n_marked)
   
-  return(n_marked)
-}
-
-
-# 4. Generar mapa y tabla por ruta
-
-plot_kegg_integrated <- function(
-    comparison,
-    pathway_id,
-    limit_logFC = 3
-) {
-  
-  info <- make_kegg_gene_table(
-    comparison,
-    pathway_id
-  )
-  
-  tabla <- info$genes
-  
-  carpeta <- file.path(
-    "Mapas_KEGG_GSEA",
-    comparison
-  )
-  
-  dir.create(
-    carpeta,
-    recursive = TRUE,
-    showWarnings = FALSE
-  )
-  
-  # Guardar tabla de genes
-  write.csv(
-    tabla,
-    file.path(
-      carpeta,
-      paste0(pathway_id, "_genes.csv")
-    ),
-    row.names = FALSE
-  )
-  
-  # Valores utilizados para el color de los nodos
-  gene_values <- tabla$logFC_plot
-  names(gene_values) <- tabla$ENTREZID
-  
-  suffix <- paste0(
-    comparison, "_", pathway_id
-  )
-  
-  # Generar mapa KEGG
-  pv <- pathview::pathview(
-    gene.data = gene_values,
-    pathway.id = pathway_id,
-    species = "hsa",
-    gene.idtype = "entrez",
-    kegg.native = TRUE,
-    plot.col.key = TRUE,
-    key.pos = "bottomright",
-    
-    na.col = "#D3D3D3",
-    
-    low = list(gene = "#2166AC"), #cpd es para metabolitos, no se usa
-    mid = list(gene = "#F7F7F7"),
-    high = list(gene = "#B2182B"),
-    
-    limit = list(gene = limit_logFC, cpd = 1),
-    bins = list(gene = 100, cpd = 10),
-    both.dirs = list(gene = TRUE, cpd = TRUE),
-    
-    node.sum = "max.abs", # Se presenta el logFC más alto para el nodo de los diferentes genes
-    
-    out.suffix = suffix,
-    kegg.dir = "Mapas_KEGG_GSEA"
-  )
-  
-  if (is.null(pv$plot.data.gene)) {
-    stop("No se generaron los nodos de la ruta.")
-  }
-  
-  original_file <- paste0(
-    pathway_id, ".", suffix, ".png"
-  )
-  
-  if (!file.exists(original_file)) {
-    stop("No se encontró el mapa original.")
-  }
-  
+  # 10. Guardar mapa final
   final_file <- file.path(
-    carpeta,
-    paste0(pathway_id, "_DEG_LE.png")
+    trt_dir,
+    paste0(pathway_id, "_shared_exclusive_map.png")
   )
   
-  n_marked <- add_leading_edge_borders(
-    image_file = original_file,
-    plot_data = pv$plot.data.gene,
-    leading_ids = info$leading_ids,
-    output_file = final_file
-  )
+  png::writePNG(img, final_file)
   
-  # Conservar solamente el mapa final
-  if (file.exists(final_file)) {
-    file.remove(original_file)
+  # 11. Guardar tabla de nodos
+  if (length(node_summary) > 0) {
+    
+    node_summary_df <- dplyr::bind_rows(node_summary)
+    
+    write.csv(
+      node_summary_df,
+      file.path(
+        trt_dir,
+        paste0(pathway_id, "_node_status_summary.csv")
+      ),
+      row.names = FALSE
+    )
   }
   
-  message(
-    "Mapa generado: ", comparison,
-    " | ", pathway_id,
-    " | Nodos marcados: ", n_marked
-  )
+  message("Mapa final guardado: ", final_file)
   
   return(invisible(final_file))
 }
 
 
-# 5. Generar mapas de todas las rutas y comparaciones
-comparisons_gsea <- names(gsea_kegg_death)
-for (comparison in comparisons_gsea) {
+# Ejecutar mapas
+for (trt in names(comparison_pairs)) {
   
   for (pathway_id in names(death_pathways)) {
     
-    message(
-      "\nProcesando: ",
-      comparison,
-      " | ",
-      death_pathways[[pathway_id]]
-    )
+    message("Procesando mapa shared/exclusive: ", trt, " | ", pathway_id)
     
     tryCatch(
-      
-      plot_kegg_integrated(
-        comparison = comparison,
+      plot_kegg_shared_exclusive_map(
+        treatment = trt,
         pathway_id = pathway_id,
-        limit_logFC = 3
+        out_dir = "Mapas_shared_exclusive",
+        border_width = 3
       ),
-      
       error = function(e) {
-        message(
-          "Error en ", comparison,
-          " | ", pathway_id,
-          ": ", conditionMessage(e)
-        )
+        message("Error en ", trt, " | ", pathway_id, ": ", conditionMessage(e))
       }
     )
   }
 }
 
-# Si quiero ver las tablas que incluyen DEGs y Leading genes
-View(read.csv("Mapas_KEGG_GSEA/lipof_24_vs_vehicle_24/hsa04217_genes.csv"))
 
-# Guardar objetos del ambiente
-save.image("respaldo_analisis_completo.RData")
+
+# Heatmaps para figuras compuestas ----------------------------------------
+# Tabla combinada 6h/24h
+build_route_treatment_table <- function(treatment, pathway_id) {
+  
+  cmp6 <- comparison_pairs[[treatment]]$h6
+  cmp24 <- comparison_pairs[[treatment]]$h24
+  
+  tab6 <- make_kegg_gene_table_allfc(cmp6, pathway_id)$genes %>%
+    dplyr::select(
+      ENTREZID, ENSEMBL, gene_name, gene_biotype,
+      logFC, FDR, DEG, LeadingEdge
+    ) %>%
+    rename(
+      logFC_6h = logFC,
+      FDR_6h = FDR,
+      DEG_6h = DEG,
+      LE_6h = LeadingEdge
+    )
+  
+  tab24 <- make_kegg_gene_table_allfc(cmp24, pathway_id)$genes %>%
+    dplyr::select(
+      ENTREZID, ENSEMBL, gene_name, gene_biotype,
+      logFC, FDR, DEG, LeadingEdge
+    ) %>%
+    rename(
+      logFC_24h = logFC,
+      FDR_24h = FDR,
+      DEG_24h = DEG,
+      LE_24h = LeadingEdge
+    )
+  
+  merged <- full_join(
+    tab6,
+    tab24,
+    by = c("ENTREZID", "ENSEMBL", "gene_name", "gene_biotype")
+  ) %>%
+    mutate(
+      LE_6h = ifelse(is.na(LE_6h), FALSE, LE_6h),
+      LE_24h = ifelse(is.na(LE_24h), FALSE, LE_24h),
+      DEG_6h = ifelse(is.na(DEG_6h), FALSE, DEG_6h),
+      DEG_24h = ifelse(is.na(DEG_24h), FALSE, DEG_24h),
+      category = case_when(
+        LE_6h & LE_24h ~ "Compartido",
+        LE_6h & !LE_24h ~ "Exclusivo 6h",
+        !LE_6h & LE_24h ~ "Exclusivo 24h",
+        TRUE ~ "No LE"
+      ),
+      priority = case_when(
+        category == "Compartido" ~ 1,
+        category == "Exclusivo 6h" ~ 2,
+        category == "Exclusivo 24h" ~ 3,
+        TRUE ~ 4
+      ),
+      best_fdr = pmin(FDR_6h, FDR_24h, na.rm = TRUE),
+      best_abs_logFC = pmax(abs(logFC_6h), abs(logFC_24h), na.rm = TRUE)
+    ) %>%
+    arrange(priority, best_fdr, desc(best_abs_logFC))
+  
+  return(merged)
+}
+
+# Generar plots
+plot_heatmap_top10_route <- function(treatment,
+                                     pathway_id,
+                                     out_dir = "Heatmaps_top10_logFC",
+                                     top_n = 10,
+                                     limit_logFC = 0.5) {
+  
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  trt_dir <- file.path(out_dir, treatment, pathway_id)
+  dir.create(trt_dir, recursive = TRUE, showWarnings = FALSE)
+  
+  merged <- build_route_treatment_table(treatment, pathway_id)
+  
+  # seleccionar genes LE prioritarios
+  selected <- merged %>%
+    filter(category != "No LE") %>%
+    slice_head(n = top_n)
+  
+  if (nrow(selected) == 0) {
+    message("No hay genes LE para heatmap en ", treatment, " | ", pathway_id)
+    return(NULL)
+  }
+  
+  # si faltan genes, completar con genes de ruta
+  if (nrow(selected) < top_n) {
+    faltan <- top_n - nrow(selected)
+    
+    extra <- merged %>%
+      filter(!(ENTREZID %in% selected$ENTREZID)) %>%
+      slice_head(n = faltan)
+    
+    selected <- bind_rows(selected, extra)
+  }
+  
+  # matriz de logFC
+  mat <- selected %>%
+    dplyr::select(logFC_6h, logFC_24h) %>%
+    as.matrix()
+  
+  rownames(mat) <- ifelse(
+    is.na(selected$gene_name) | selected$gene_name == "",
+    selected$ENTREZID,
+    selected$gene_name
+  )
+  
+  colnames(mat) <- c("6 h", "24 h")
+  
+  # limitar visualización
+  mat_plot <- mat
+  mat_plot[mat_plot > limit_logFC] <- limit_logFC
+  mat_plot[mat_plot < -limit_logFC] <- -limit_logFC
+  
+  annotation_row <- data.frame(
+    Categoria = selected$category,
+    row.names = rownames(mat_plot)
+  )
+  
+  ann_colors <- list(
+    Categoria = c(
+      "Compartido" = "#7B1FA2",
+      "Exclusivo 6h" = "#D32F2F",
+      "Exclusivo 24h" = "#1976D2",
+      "No LE" = "#BDBDBD"
+    )
+  )
+  
+  out_png <- file.path(
+    trt_dir,
+    paste0(pathway_id, "_heatmap_top", top_n, "_logFC.png")
+  )
+  
+  pheatmap::pheatmap(
+    mat_plot,
+    color = logfc_palette,
+    breaks = seq(-limit_logFC, limit_logFC, length.out = 101),
+    cluster_rows = TRUE,
+    cluster_cols = FALSE,
+    annotation_row = annotation_row,
+    annotation_colors = ann_colors,
+    border_color = "white",
+    fontsize_row = 8,
+    fontsize_col = 10,
+    main = paste0(
+      death_pathways[[pathway_id]],
+      " | ",
+      comparison_pairs[[treatment]]$label,
+      " | Top ",
+      top_n,
+      " genes"
+    ),
+    filename = out_png,
+    width = 4,
+    height = 5
+  )
+  
+  # guardar tabla de respaldo
+  write.csv(
+    selected,
+    file.path(
+      trt_dir,
+      paste0(pathway_id, "_heatmap_top", top_n, "_genes.csv")
+    ),
+    row.names = FALSE
+  )
+  
+  return(invisible(out_png))
+}
+
+# Ejecutr plots
+for (trt in names(comparison_pairs)) {
+  
+  for (pathway_id in names(death_pathways)) {
+    
+    message("Procesando heatmap: ", trt, " | ", pathway_id)
+    
+    tryCatch(
+      plot_heatmap_top10_route(
+        treatment = trt,
+        pathway_id = pathway_id,
+        out_dir = "Heatmaps_top10_logFC",
+        top_n = 10,
+        limit_logFC = 0.5
+      ),
+      error = function(e) {
+        message("Error en ", trt, " | ", pathway_id, ": ", conditionMessage(e))
+      }
+    )
+  }
+}
+
+
+
+
+
+
+################################################################################
+# EXTRACCIÓN DE GENES POR NODO KEGG
+# Comparación: etoh_24_vs_control_24
+# Rutas: Autofagia, Ciclo celular y Ferroptosis
+
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(pathview)
+library(writexl)
+
+
+# 1. Configuración
+
+nodo_comparacion <- "etoh_24_vs_control_24"
+
+nodo_rutas <- c(
+  "hsa04216" = "Ferroptosis",
+  "hsa04140" = "Autofagia",
+  "hsa04110" = "Ciclo celular"
+)
+
+nodo_directorio <- "Extraccion_genes_por_nodo"
+
+dir.create(
+  nodo_directorio,
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+
+
+
+# 2. Extracción de genes por nodo
+
+nodo_extraer_genes <- function(comparison, pathway_id, ruta) {
+  
+  message("Procesando: ", ruta)
+  
+  # Obtener genes de la ruta y sus Leading Edge
+  nodo_info <- make_kegg_gene_table_allfc(
+    comparison,
+    pathway_id
+  )
+  
+  nodo_tabla <- nodo_info$genes
+  
+  nodo_leading_ids <- as.character(nodo_info$leading_ids)
+  
+  if (nrow(nodo_tabla) == 0) {
+    warning("No hay genes disponibles para: ", pathway_id)
+    return(NULL)
+  }
+  
+  # Preparar valores de logFC
+  nodo_valores <- nodo_tabla$logFC
+  
+  names(nodo_valores) <- as.character(nodo_tabla$ENTREZID)
+  
+  # Directorio de salida de Pathview
+  nodo_subdirectorio <- file.path(
+    nodo_directorio,
+    comparison,
+    pathway_id
+  )
+  
+  dir.create(
+    nodo_subdirectorio,
+    recursive = TRUE,
+    showWarnings = FALSE
+  )
+  
+  # Generar mapa Pathview
+  nodo_pv <- pathview::pathview(
+    gene.data = nodo_valores,
+    pathway.id = pathway_id,
+    species = "hsa",
+    gene.idtype = "entrez",
+    kegg.native = TRUE,
+    plot.col.key = FALSE,
+    na.col = "#D3D3D3",
+    low = list(gene = "#2166AC"),
+    mid = list(gene = "#F7F7F7"),
+    high = list(gene = "#B2182B"),
+    limit = list(gene = 0.5, cpd = 1),
+    bins = list(gene = 100, cpd = 10),
+    both.dirs = list(gene = TRUE, cpd = TRUE),
+    node.sum = "max.abs",
+    out.suffix = paste0(comparison, "_", pathway_id, "_revision"),
+    kegg.dir = nodo_subdirectorio
+  )
+  
+  # Recuperar información de los nodos físicos
+  nodo_nodos <- nodo_pv$plot.data.gene %>%
+    dplyr::filter(type == "gene") %>%
+    dplyr::distinct(
+      x, y, width, height,
+      kegg.names, labels, all.mapped,
+      .keep_all = TRUE
+    ) %>%
+    dplyr::filter(
+      !is.na(all.mapped),
+      trimws(all.mapped) != ""
+    ) %>%
+    dplyr::mutate(
+      Node_id = paste(x, y, width, height, sep = "_"),
+      Node_label = labels,
+      Node_kegg = kegg.names,
+      Node_genes = all.mapped
+    )
+  
+  # Expandir los genes asociados a cada nodo
+  nodo_genes <- nodo_nodos %>%
+    dplyr::mutate(
+      ENTREZID = stringr::str_split(all.mapped, ",")
+    ) %>%
+    tidyr::unnest(ENTREZID) %>%
+    dplyr::mutate(
+      ENTREZID = trimws(as.character(ENTREZID))
+    ) %>%
+    dplyr::filter(
+      !is.na(ENTREZID),
+      ENTREZID != ""
+    )
+  
+  # Incorporar anotación, logFC, FDR y Leading Edge
+  nodo_genes <- nodo_genes %>%
+    dplyr::left_join(
+      nodo_tabla %>%
+        dplyr::mutate(
+          ENTREZID = as.character(ENTREZID)
+        ),
+      by = "ENTREZID"
+    ) %>%
+    dplyr::mutate(
+      Comparacion = comparison,
+      Ruta = ruta,
+      KEGG_ID = pathway_id,
+      LeadingEdge = ENTREZID %in% nodo_leading_ids
+    ) %>%
+    dplyr::select(
+      Comparacion,
+      Ruta,
+      KEGG_ID,
+      Node_id,
+      Node_label,
+      Node_kegg,
+      Node_genes,
+      ENTREZID,
+      gene_name,
+      LeadingEdge,
+      logFC,
+      FDR
+    )
+  
+  return(nodo_genes)
+}
+
+
+# 3. Ejecutar la estracción para las 3 rutas
+
+nodo_resultados <- lapply(
+  names(nodo_rutas),
+  function(id) {
+    
+    nodo_extraer_genes(
+      comparison = nodo_comparacion,
+      pathway_id = id,
+      ruta = unname(nodo_rutas[id])
+    )
+  }
+)
+
+# Unir las tres rutas
+nodo_genes_definitivos <- dplyr::bind_rows(
+  nodo_resultados
+)
+
+
+# 4. Crear tabla solo de leading edge
+
+nodo_leading_edge_definitivo <- nodo_genes_definitivos %>%
+  dplyr::filter(LeadingEdge == TRUE)
+
+
+# 5. Exportar tablas a excel
+
+
+writexl::write_xlsx(
+  list(
+    "Genes por nodo" = nodo_genes_definitivos,
+    "Solo leading edge" = nodo_leading_edge_definitivo
+  ),
+  file.path(
+    nodo_directorio,
+    "Genes_por_nodo_LE_etoh_24_vs_control_24.xlsx"
+  )
+)
